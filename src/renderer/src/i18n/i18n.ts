@@ -21,7 +21,7 @@ import { isPluginUiLanguage, type UiLanguage } from '../../../shared/ui-language
 import {
   isCatalogObject,
   type PluginLanguagePackRegistration
-} from '../../../shared/plugins/plugin-language-pack-artifact'
+} from '../../../shared/plugins/artifacts/plugin-language-pack-artifact'
 import { withTimeout } from '../../../shared/promise-timeout-fallback'
 
 export const i18n: I18nInstance = i18next.createInstance()
