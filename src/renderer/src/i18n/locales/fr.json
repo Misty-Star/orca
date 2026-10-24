@@ -5923,7 +5923,8 @@
                 "62e71f2d5d": "Créer un espace de travail pour {{value0}}"
               }
             }
-          }
+          },
+          "project": {}
         },
         "sleep": {
           "worktree": {
