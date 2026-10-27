@@ -12,6 +12,7 @@ import { getProjectProviderIdentity } from '../shared/project-host-setup-project
 import { getStoredRepoExecutionHostId } from './repo-execution-host'
 import { probeGitRemoteIdentity } from './repo-git-remote-identity'
 import { getProjectRuntimeReadGitOptions } from './project-runtime-git-options'
+import { isLocalGitRuntimeRouterInstalled } from './git/command-runner/local-git-runtime-route'
 import type { ProjectRuntimeResolutionStore } from './local-project-runtime-resolution'
 import { isWslMoveRepoBlocked } from './persistence/moving-wsl-projects/wsl-move-background-backoff'
 
@@ -163,7 +164,8 @@ async function enrichRepoGitRemoteIdentity(store: RepoIdentityStore, repo: Repo)
   const promise = (async () => {
     const result = await probeGitRemoteIdentity(repo.path, hostId, {
       signal: controller.signal,
-      admissionTier: 'background',
+      // Only the D1c router reads it, to wait for a stopped distro; main's sweep keeps its tier.
+      ...(isLocalGitRuntimeRouterInstalled() ? { admissionTier: 'background' as const } : {}),
       // A local project's runtime may run its Git in a distro, whatever its path.
       ...getProjectRuntimeReadGitOptions(store, repo)
     })
