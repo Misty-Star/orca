@@ -98,6 +98,8 @@ export function MobileQueuedMessageComposer({
               }
             : null
         }
+        skillDiscovery={context?.skillDiscovery}
+        onNeedSkills={context?.onNeedSkills}
         filePaths={context?.filePaths}
         onNeedFiles={context?.onNeedFiles}
         onPickSkill={(skill) =>

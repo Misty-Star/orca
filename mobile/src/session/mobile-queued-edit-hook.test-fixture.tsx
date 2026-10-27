@@ -157,6 +157,7 @@ export function mobileQueuedEditHarness() {
           ? null
           : {
               ...CAPABLE,
+              sendSkills: true,
               queuedMessages: false,
               queuedMessageImageEdit: imagesSupport,
               queuedMessageSkillsEdit: skillsSupport,

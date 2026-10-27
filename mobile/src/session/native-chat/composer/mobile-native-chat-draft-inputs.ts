@@ -129,10 +129,14 @@ export function resetMobileNativeChatDraftInputsForTests(): void {
 export function pruneMobileNativeChatDraftSkills(
   scope: string,
   text: string,
-  sigil: '$' | '/' = '$'
+  sigil: '$' | '/' | readonly ('$' | '/')[] = '$'
 ): void {
   const current = readMobileNativeChatDraftInputs(scope)
-  const skills = pickedSkillsInText(text, current.skills, [sigil])
+  const skills = pickedSkillsInText(
+    text,
+    current.skills,
+    typeof sigil === 'string' ? [sigil] : sigil
+  )
   if (skills.length !== current.skills.length) {
     updateMobileNativeChatDraftInputs(scope, (current) => ({ ...current, skills }))
   }

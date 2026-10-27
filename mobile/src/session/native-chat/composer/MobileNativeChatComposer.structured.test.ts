@@ -166,7 +166,7 @@ describe('MobileNativeChatComposer on a structured chat', () => {
           enabled: true,
           connected: true,
           agent: 'codex',
-          hostSupport: CAPABLE,
+          hostSupport: { ...CAPABLE, sendSkills: true },
           composerScopeKey: scope,
           onSendError: vi.fn()
         })
@@ -250,7 +250,7 @@ describe('MobileNativeChatComposer on a structured chat', () => {
           enabled: true,
           connected: true,
           agent,
-          hostSupport: CAPABLE,
+          hostSupport: { ...CAPABLE, sendSkills: true },
           composerScopeKey: scope,
           onSendError: vi.fn()
         })
@@ -377,5 +377,29 @@ describe('MobileNativeChatComposer on a structured chat', () => {
     expect(labelled('Send message')[0]!.props.disabled).toBe(false)
     await act(async () => labelled('Send message')[0]!.props.onPress())
     expect(onSend).toHaveBeenCalledExactlyOnceWith('')
+  })
+  it('forgets picked skill identity after its token is removed and retyped', async () => {
+    const scope = 'removed-skill'
+    updateMobileNativeChatDraftInputs(scope, () => ({
+      images: [],
+      files: [],
+      skills: [{ name: 'review', path: '/remote/SKILL.md' }]
+    }))
+    await act(async () => {
+      renderer = create(
+        createElement(MobileNativeChatComposer, {
+          draftScopeKey: scope,
+          value: '$review draft',
+          onChangeText: vi.fn(),
+          onSend: async () => false,
+          sendSurfaceId: scope,
+          getSendCompletionGeneration: getNoComposerEditGeneration
+        })
+      )
+    })
+    const input = () => findByHostType(renderer!.root, 'TextInput')
+    await act(async () => input().props.onChangeText('draft'))
+    await act(async () => input().props.onChangeText('$review draft'))
+    expect(readMobileNativeChatDraftInputs(scope).skills).toEqual([])
   })
 })

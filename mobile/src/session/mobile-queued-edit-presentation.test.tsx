@@ -220,4 +220,52 @@ describe('phone inline editor presentation', () => {
       sendRequest.mock.calls.some(([method]) => method === 'agentSession.queuedMessageUpdate')
     ).toBe(false)
   })
+  it('retiring a selected namesake refuses typed and stale command activation through the real wrapper', async () => {
+    const message = queuedDraft({ messageId: 'namesake' })
+    const { root, button, field } = await rows(message, 'claude', SESSION_ID, {
+      reported: [{ name: 'model', kind: 'skill', path: '/A/SKILL.md' }]
+    })
+    act(() => field().props.onChangeText('/'))
+    act(() => field().props.onSelectionChange({ nativeEvent: { selection: { start: 1, end: 1 } } }))
+    const stale = root().findByType(MobileNativeChatComposerMenu).props.onPick
+    await act(async () => button('/model').props.onPress())
+    const key = state.hook!.queued.editor!.scopeKey
+    expect(readMobileNativeChatDraftInputs(key).skills).toHaveLength(1)
+    act(() => stale({ kind: 'command', token: '/model', name: 'model', id: 'command:model' }))
+    expect(error).toHaveBeenLastCalledWith("Commands can't be saved in a queued message.")
+    expect(state.hook!.queued.editor!.text).toBe('/model ')
+    act(() => field().props.onChangeText(''))
+    act(() => field().props.onChangeText('/model'))
+    expect(readMobileNativeChatDraftInputs(key).skills).toEqual([])
+    await act(async () => button('Save edited message').props.onPress())
+    expect(error).toHaveBeenCalledTimes(2)
+    expect(
+      sendRequest.mock.calls.some(([method]) =>
+        /(?:Update|send|conversationCommand|pty)/.test(method)
+      )
+    ).toBe(false)
+    expect(state.hook!.queued.editor).toBeDefined()
+  })
+
+  it('an image-only attributed card reaches the actual inline composer and no-op Save retains its image and sender', async () => {
+    const message = queuedDraft({
+      messageId: 'photo-only',
+      body: {
+        kind: 'message',
+        role: 'user',
+        blocks: [{ type: 'image-ref', url: 'https://host/photo.png', alt: 'photo' }],
+        from: { kind: 'agent', senders: [], orchestration: null }
+      }
+    })
+    const { root, button } = await rows(message)
+    expect(root().findByType(MobileNativeChatComposer).props.attachments).toHaveLength(1)
+    await act(async () => button('Save edited message').props.onPress())
+    expect(state.hook!.queued.editor).toBeUndefined()
+    expect(
+      sendRequest.mock.calls.some(([method]) => method === 'agentSession.queuedMessageUpdate')
+    ).toBe(false)
+    expect(state.hook!.queued.cards[0]?.images).toEqual(message.body.blocks)
+    expect(state.hook!.queued.cards[0]?.attribution).not.toBeNull()
+    expect(state.bottomText).toBe('')
+  })
 })

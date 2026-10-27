@@ -11,10 +11,8 @@ import {
   Trash2
 } from 'lucide-react-native'
 import { colors } from '../theme/mobile-theme'
-import {
-  mobileQueuedMessageCardLine,
-  type MobileQueuedMessageCard
-} from './mobile-structured-queued-message-cards'
+import { queuedMessageCardSteers } from '../../../src/shared/structured-agent-session-queued-cards'
+import type { MobileQueuedMessageCard } from './mobile-structured-queued-message-cards'
 import type { MobileQueuedMessageInlineEditor } from './use-mobile-structured-queued-edit'
 import { MobileQueuedMessageComposer } from './MobileQueuedMessageComposer'
 import { MobileQueuedCardText } from './MobileQueuedCardText'
@@ -65,7 +63,7 @@ function QueuedMessageCardContents({
 }: Omit<QueuedMessageCardRowProps, 'editor' | 'onEditorLayout'>): React.JSX.Element {
   const [expanded, setExpanded] = useState(false)
   const returned = card.state === 'returned'
-  const steers = !returned && !card.paused && !card.command
+  const steers = queuedMessageCardSteers(card)
   return (
     <View testID="queued-card-row" style={[styles.card, styles.divided]}>
       <View style={styles.row}>
@@ -82,7 +80,7 @@ function QueuedMessageCardContents({
             </Text>
           ) : null}
           <MobileQueuedCardText
-            text={mobileQueuedMessageCardLine(card)}
+            text={card.line}
             expanded={expanded}
             onToggle={() => setExpanded(!expanded)}
           />
@@ -173,7 +171,7 @@ function QueuedMessageCardContents({
               accessibilityHint="Shows less of the message"
               onPress={() => setExpanded(false)}
             >
-              <Text style={styles.bodyText}>{card.text}</Text>
+              <Text style={styles.bodyText}>{card.line}</Text>
             </Pressable>
           ) : null}
           {returned && card.caption ? (

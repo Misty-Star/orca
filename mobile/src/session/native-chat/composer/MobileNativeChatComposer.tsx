@@ -9,6 +9,7 @@ import {
   pruneMobileNativeChatDraftSkills,
   registerMobileNativeChatTextDestination
 } from './mobile-native-chat-draft-inputs'
+import type { NativeChatSkillDiscoverySnapshot } from '../../../../../src/shared/native-chat/input/native-chat-picker-items'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { ActivityIndicator, Keyboard, Pressable, type TextInput, Text, View } from 'react-native'
 import { ArrowUp, Mic, Plus, Square } from 'lucide-react-native'
@@ -32,6 +33,7 @@ import { keepHeldPressThroughLongPress } from '../../held-press-long-press'
 import { mobileNativeChatComposerShowsStop } from './mobile-native-chat-composer-layout'
 import { MobileNativeChatStopButton } from '../input/MobileNativeChatStopButton'
 import { mobileNativeChatComposerStyles as styles } from './mobile-native-chat-composer-styles'
+import { recordMobileNativeChatSkillPick } from './mobile-native-chat-draft-store'
 
 const NO_FILE_PATHS: string[] = []
 const NO_ATTACHMENTS: PendingNativeChatImage[] = []
@@ -79,6 +81,9 @@ type Props = {
   placeholder?: string
   filePaths?: string[]
   onNeedFiles?: (query: string) => void
+  /** The host's disk-scanned skills, loaded once a skill trigger opens. */
+  skillDiscovery?: NativeChatSkillDiscoverySnapshot
+  onNeedSkills?: () => void
   /** Set while the agent can be stopped; Stop takes Send's slot when Send can't deliver. */
   stop?: { onStop?: () => void; held: boolean } | null
 }
@@ -112,6 +117,8 @@ export function MobileNativeChatComposer({
   placeholder = NATIVE_CHAT_COMPOSER_PLACEHOLDER,
   filePaths = NO_FILE_PATHS,
   onNeedFiles,
+  skillDiscovery,
+  onNeedSkills,
   stop = null
 }: Props): React.JSX.Element {
   useEffect(() => {
@@ -151,13 +158,22 @@ export function MobileNativeChatComposer({
       }
       onChangeText(text)
     },
-    onPickSkill,
+    onPickSkill: (skill) => {
+      if (onPickSkill && skill.path) {
+        onPickSkill({ name: skill.token.slice(1), path: skill.path })
+      }
+      if (!editSession) {
+        recordMobileNativeChatSkillPick(sendSurfaceId, skill)
+      }
+    },
     refuseCommand: editSession?.refuseCommand,
     editing: editSession !== undefined,
     agent,
     structuredCatalog: structured?.catalog,
     filePaths,
     onNeedFiles,
+    skillDiscovery,
+    onNeedSkills,
     onSlashMenuOpen: structured?.onSlashMenuOpen,
     focusField: () => fieldRef.current?.focus()
   })

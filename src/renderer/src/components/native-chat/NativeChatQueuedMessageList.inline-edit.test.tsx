@@ -61,7 +61,7 @@ const editAttachTo: QueuedEditAttachTarget = {
 }
 
 import { TooltipProvider } from '@/components/ui/tooltip'
-import type { QueuedMessageCard } from './structured-agent-session-queued-cards'
+import type { QueuedMessageCard } from '../../../../shared/structured-agent-session-queued-cards'
 import { NativeChatQueuedMessageList } from './NativeChatQueuedMessageList'
 import type { StructuredAgentSessionQueuedMessagesController } from './use-structured-agent-session-queued-messages'
 

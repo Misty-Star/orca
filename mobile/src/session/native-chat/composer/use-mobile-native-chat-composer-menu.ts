@@ -1,19 +1,23 @@
 import { prepareQueuedMessageEditText } from '../../../../../src/shared/queued-message-edit-command'
 import { useEffect, useMemo, useState } from 'react'
 import {
-  applyAutocomplete,
-  detectAutocompleteTrigger,
-  rankSuggestions
-} from './mobile-native-chat-autocomplete'
+  applyMentionSuggestion,
+  applyPickerSuggestion,
+  deriveComposerAutocomplete,
+  isSkillPickerTriggered
+} from '../../../../../src/shared/native-chat-composer-autocomplete'
+import type { NativeChatSkillDiscoverySnapshot } from '../../../../../src/shared/native-chat/input/native-chat-picker-items'
 import {
+  boundedMenuItems,
   draftAfterSkillEdit,
   narrowedMenuItems,
   leadingSkillToken,
+  MENU_ROWS_PER_GROUP,
+  mobileComposerCatalog,
   mobileComposerSkillTokens,
-  mobileComposerSlashItems,
   type MobileComposerStructuredCatalog
 } from './mobile-native-chat-composer-menu'
-import { composerMenuInsertText, type ComposerMenuRow } from './MobileNativeChatComposerMenu'
+import type { ComposerMenuRow } from './MobileNativeChatComposerMenu'
 
 type Selection = { start: number; end: number }
 /** Opening the menu from the + sheet narrows it to what that row named. */
@@ -28,14 +32,17 @@ export function useMobileNativeChatComposerMenu(input: {
   structuredCatalog: MobileComposerStructuredCatalog | undefined
   filePaths: readonly string[]
   onNeedFiles?: (query: string) => void
+  skillDiscovery?: NativeChatSkillDiscoverySnapshot
+  onNeedSkills?: () => void
   /** The `/` menu opened; the session's list may have changed since it was read. */
   onSlashMenuOpen?: () => void
-  focusField: () => void
-  onPickSkill?: (skill: { name: string; path: string }) => void
+  /** A picked skill; a send carries its file while its token stays, and treats a leading one as chat. */
+  onPickSkill?: (skill: { token: string; path?: string }) => void
   editing?: boolean
   refuseCommand?: (text: string) => boolean
+  focusField: () => void
 }) {
-  const { value, onChangeText, agent, structuredCatalog, filePaths, editing } = input
+  const { value, onChangeText, agent, structuredCatalog, filePaths, skillDiscovery } = input
   const [cursor, setCursor] = useState(0)
   // Drives the caret only right after an insert; a permanently controlled `selection` breaks
   // manual caret placement in React Native.
@@ -47,10 +54,16 @@ export function useMobileNativeChatComposerMenu(input: {
     () => prepareQueuedMessageEditText(agent ?? 'codex', reported),
     [agent, reported]
   )
-  const skillTokens = useMemo(
-    () => mobileComposerSkillTokens({ agent, structured: structuredCatalog, editing, acceptsText }),
-    [agent, structuredCatalog, editing, acceptsText]
+  const commandAvailable = useMemo(
+    () => (input.editing ? (name: string) => acceptsText(`/${name}`) : undefined),
+    [input.editing, acceptsText]
   )
+  const catalog = useMemo(
+    () =>
+      mobileComposerCatalog({ agent, structured: structuredCatalog, discovery: skillDiscovery }),
+    [agent, skillDiscovery, structuredCatalog]
+  )
+  const skillTokens = useMemo(() => mobileComposerSkillTokens(catalog), [catalog])
   const skillToken = leadingSkillToken(value, skillTokens)
   const setDraft = (next: string): void => {
     if (!next.startsWith('/')) {
@@ -66,38 +79,52 @@ export function useMobileNativeChatComposerMenu(input: {
     }
   }
 
-  const trigger = useMemo(() => detectAutocompleteTrigger(value, cursor), [value, cursor])
-  // Memoize by query content so caret movement within it rebuilds nothing.
-  const menuMode = trigger?.kind ?? null
-  const menuQuery = trigger?.query ?? ''
+  // Triggers read only the text before the caret, so edits after it rebuild nothing.
+  const beforeCaret = value.slice(0, cursor)
+  const autocomplete = useMemo(
+    () =>
+      deriveComposerAutocomplete(
+        beforeCaret,
+        beforeCaret.length,
+        catalog.commands,
+        catalog.discovery.skills,
+        catalog.profile,
+        catalog.discovery,
+        null,
+        catalog.sessionSkills,
+        commandAvailable
+      ),
+    [beforeCaret, catalog, commandAvailable]
+  )
   const rows = useMemo<ComposerMenuRow[]>(() => {
-    if (menuMode === 'file') {
-      return rankSuggestions(filePaths, menuQuery).map((path) => ({
+    if (autocomplete.mode === 'mention') {
+      return filePaths.slice(0, MENU_ROWS_PER_GROUP).map((path) => ({
         kind: 'file' as const,
         id: `file:${path}`,
         path
       }))
     }
-    if (menuMode !== 'slash') {
+    if (autocomplete.mode !== 'slash') {
       return []
     }
-    const items = mobileComposerSlashItems({
-      agent,
-      structured: structuredCatalog,
-      editing,
-      acceptsText,
-      query: menuQuery
-    })
-    return narrowedMenuItems(items, menuKind)
-  }, [agent, filePaths, menuKind, menuMode, menuQuery, structuredCatalog, editing, acceptsText])
+    return narrowedMenuItems(boundedMenuItems(autocomplete.items), menuKind)
+  }, [autocomplete, filePaths, menuKind])
 
-  const { onNeedFiles, onSlashMenuOpen } = input
+  const { onNeedFiles, onNeedSkills, onSlashMenuOpen } = input
+  // Scan disk skills only once a token needs them, as desktop does.
+  const skillsTriggered = isSkillPickerTriggered(beforeCaret, catalog.profile)
   useEffect(() => {
-    if (trigger?.kind === 'file') {
-      onNeedFiles?.(trigger.query)
+    if (skillsTriggered) {
+      onNeedSkills?.()
     }
-  }, [onNeedFiles, trigger?.kind, trigger?.query])
-  const slashOpen = trigger?.kind === 'slash'
+  }, [onNeedSkills, skillsTriggered])
+  const mentionQuery = autocomplete.mode === 'mention' ? autocomplete.query : null
+  useEffect(() => {
+    if (mentionQuery !== null) {
+      onNeedFiles?.(mentionQuery)
+    }
+  }, [onNeedFiles, mentionQuery])
+  const slashOpen = autocomplete.mode === 'slash'
   useEffect(() => {
     if (slashOpen) {
       onSlashMenuOpen?.()
@@ -110,7 +137,7 @@ export function useMobileNativeChatComposerMenu(input: {
   }
 
   const pick = (row: ComposerMenuRow): void => {
-    if (!trigger) {
+    if (autocomplete.mode === 'none') {
       return
     }
     if (row.kind === 'command' && input.refuseCommand?.(row.token)) {
@@ -119,19 +146,21 @@ export function useMobileNativeChatComposerMenu(input: {
     setMenuKind(null)
     // Restore page field focus after a menu tap so typing continues at the inserted pick.
     input.focusField()
-    if (row.kind === 'skill') {
-      const path = row.path
-      if (path) {
-        input.onPickSkill?.({ name: row.token.slice(1), path })
-      }
-      const rest = value.slice(trigger.end).trimStart()
-      onChangeText(`${row.token} ${rest}`)
-      placeCaret(row.token.length + 1)
+    if (row.kind === 'file') {
+      const next = applyMentionSuggestion(value, cursor, row.path)
+      setDraft(next.draft)
+      placeCaret(next.caret)
       return
     }
-    const next = applyAutocomplete(value, trigger, composerMenuInsertText(row))
-    setDraft(next.text)
-    placeCaret(next.cursor)
+    const next = applyPickerSuggestion(value, cursor, row)
+    // A skill at the start becomes the leading chip; mid-prompt it stays plain text like desktop.
+    const leadingSkill =
+      row.kind === 'skill' && next.insertedToken && next.caret === row.token.length + 1
+    setDraft(leadingSkill ? `${row.token} ${value.slice(cursor).trimStart()}` : next.draft)
+    if (row.kind === 'skill') {
+      input.onPickSkill?.(row)
+    }
+    placeCaret(next.caret)
   }
 
   const openSlashMenu = (kind: MenuKind): void => {
