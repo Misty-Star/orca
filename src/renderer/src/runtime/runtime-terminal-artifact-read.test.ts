@@ -7,6 +7,7 @@ import {
   installRuntimeFileClientEnvironment
 } from './runtime-file-client-test-harness'
 import { createCompatibleRuntimeStatusResponseIfNeeded } from './runtime-compatibility-test-fixture'
+import { replaceRuntimeEnvironmentRevisions } from './runtime-environment-revision'
 
 installRuntimeFileClientEnvironment()
 
@@ -71,6 +72,152 @@ describe('a granted host file outside every workspace', () => {
     expect(runtimeEnvironmentCall).not.toHaveBeenCalledWith(
       expect.objectContaining({ method: 'files.read' })
     )
+  })
+
+  it('reads a first image grant at the canonical host path and renews only that path', async () => {
+    const canonicalPath = '/private/tmp/out.png'
+    const preview = { content: 'iVBO', isBinary: true, isImage: true, mimeType: 'image/png' }
+    const meta = { runtimeId: 'remote-runtime' }
+    let resolutions = 0
+    runtimeEnvironmentCall.mockImplementation(async (args) => {
+      if (args.method === 'files.resolveTerminalPath') {
+        resolutions++
+        return {
+          id: 'resolve',
+          ok: true,
+          _meta: meta,
+          result: {
+            exists: true,
+            openTarget: {
+              kind: 'absolute-file',
+              absolutePath: canonicalPath,
+              grantId: resolutions === 1 ? 'canonical-1' : 'canonical-2'
+            }
+          }
+        }
+      }
+      if (args.method === 'files.readTerminalArtifact') {
+        return {
+          id: 'read',
+          ok: false,
+          _meta: meta,
+          error: {
+            code: 'runtime_error',
+            message:
+              grantIdOf(args.params) === 'canonical-1' ? 'terminal_file_grant_stale' : 'binary_file'
+          }
+        }
+      }
+      return { id: 'preview', ok: true, result: preview, _meta: meta }
+    })
+
+    await expect(
+      readRuntimeFilePreview(
+        { target: granted.target, worktreeId: granted.worktreeId, worktreePath: '/repo' },
+        granted.filePath,
+        { kind: 'chat-image' }
+      )
+    ).resolves.toEqual(preview)
+
+    const requests = runtimeEnvironmentCall.mock.calls.map(([args]) => args)
+    expect(
+      requests
+        .filter((args) => args.method === 'files.resolveTerminalPath')
+        .map((args) => args.params)
+    ).toEqual([
+      { worktree: 'id:wt-1', pathText: granted.filePath },
+      { worktree: 'id:wt-1', pathText: canonicalPath }
+    ])
+    expect(
+      requests
+        .filter((args) => args.method === 'files.readTerminalArtifact')
+        .map((args) => args.params)
+    ).toEqual([
+      { ...grantParams, absolutePath: canonicalPath, grantId: 'canonical-1' },
+      { ...grantParams, absolutePath: canonicalPath, grantId: 'canonical-2' }
+    ])
+    expect(runtimeEnvironmentCall).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: 'files.readTerminalArtifactPreview',
+        params: { ...grantParams, absolutePath: canonicalPath, grantId: 'canonical-2' }
+      })
+    )
+    expect(fsReadFile).not.toHaveBeenCalled()
+  })
+
+  it('does not read a replacement host after acquiring the first image grant', async () => {
+    let currentRevision = 41
+    replaceRuntimeEnvironmentRevisions([{ id: 'env-1', createdAt: 1, pairingRevision: 41 }])
+    runtimeEnvironmentTransportCall.mockImplementation((args) => {
+      if (
+        args.method !== 'status.get' &&
+        args.expectedEnvironmentPairingRevision !== currentRevision
+      ) {
+        return {
+          id: args.method,
+          ok: false,
+          error: {
+            code: 'runtime_environment_repaired',
+            message: 'Runtime environment was re-paired.'
+          },
+          _meta: { runtimeId: 'remote-runtime' }
+        }
+      }
+      return createCompatibleRuntimeStatusResponseIfNeeded(args) ?? runtimeEnvironmentCall(args)
+    })
+    runtimeEnvironmentCall.mockImplementation(async () => {
+      currentRevision = 42
+      replaceRuntimeEnvironmentRevisions([{ id: 'env-1', createdAt: 1, pairingRevision: 42 }])
+      return {
+        id: 'resolve',
+        ok: true,
+        _meta: { runtimeId: 'remote-runtime' },
+        result: {
+          exists: true,
+          openTarget: {
+            kind: 'absolute-file',
+            absolutePath: '/private/tmp/out.png',
+            grantId: 'canonical-1'
+          }
+        }
+      }
+    })
+    await expect(
+      readRuntimeFilePreview(
+        { target: granted.target, worktreeId: granted.worktreeId, worktreePath: '/repo' },
+        granted.filePath,
+        { kind: 'chat-image' }
+      )
+    ).rejects.toThrow(/re-paired/)
+    expect(runtimeEnvironmentCall).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        method: 'files.resolveTerminalPath',
+        expectedEnvironmentPairingRevision: 41
+      })
+    )
+    expect(fsReadFile).not.toHaveBeenCalled()
+  })
+
+  it('does not redirect a restored grant to a different canonical path', async () => {
+    runtimeEnvironmentCall.mockResolvedValue({
+      id: 'resolve',
+      ok: true,
+      _meta: { runtimeId: 'remote-runtime' },
+      result: {
+        exists: true,
+        openTarget: { kind: 'absolute-file', absolutePath: '/elsewhere/out.png', grantId: 'other' }
+      }
+    })
+    await expect(
+      readRuntimeFileContent({
+        ...granted,
+        terminalArtifactGrantId: undefined
+      })
+    ).rejects.toThrow(`The host no longer grants ${granted.filePath}`)
+    expect(runtimeEnvironmentCall).not.toHaveBeenCalledWith(
+      expect.objectContaining({ method: 'files.readTerminalArtifact' })
+    )
+    expect(fsReadFile).not.toHaveBeenCalled()
   })
 
   it.each(['missing', 'unreachable'])(

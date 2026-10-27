@@ -24,6 +24,7 @@ import { isAgentSessionAttachmentStorePath } from '../../../shared/agent-session
 import type { LocalFileAccess } from '../../../shared/local-file-access'
 import {
   isHostFileOutsideWorkspaces,
+  readHostFilePreview,
   readHostFileOutsideWorkspaces
 } from './runtime-terminal-artifact-read'
 import {
@@ -149,10 +150,10 @@ export async function readRuntimeFilePreview(
   }
   if (!remoteArgs) {
     if (access?.kind === 'chat-image' && runtimeTarget.kind === 'environment' && worktreeId) {
-      return readHostFileOutsideWorkspaces({
+      return readHostFilePreview({
         target: runtimeTarget,
         worktreeId,
-        filePath
+        absolutePath: filePath
       })
     }
     if (hasRemoteRuntimeOwner(context)) {
