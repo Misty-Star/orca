@@ -34,8 +34,10 @@ import {
   isOwnedSshTargetId,
   parseExecutionHostId,
   toRuntimeExecutionHostId,
+  toSshExecutionHostId,
   type ExecutionHostId
 } from '../../../shared/execution-host'
+import { getRuntimeSshAccess } from '../../../shared/runtime-environments'
 import { mapWithConcurrency } from '../../../shared/map-with-concurrency'
 import type { OnboardingState } from '../../../shared/onboarding-state-types'
 import { ensureLocalRuntimeCapabilities } from '../runtime/local-runtime-capabilities'
@@ -44,14 +46,24 @@ import {
   refreshStartupWorktrees
 } from '../startup/startup-worktree-refresh'
 
-async function listRuntimeSessionHostIdsForStartup(): Promise<ExecutionHostId[]> {
+async function listRuntimeSessionHostsForStartup(): Promise<{
+  hostIds: ExecutionHostId[]
+  sshHostIdByRuntimeHostId: Map<ExecutionHostId, ExecutionHostId>
+}> {
+  const sshHostIdByRuntimeHostId = new Map<ExecutionHostId, ExecutionHostId>()
   try {
-    return (await window.api.runtimeEnvironments.list()).map((environment) =>
-      toRuntimeExecutionHostId(environment.id)
-    )
+    const hostIds = (await window.api.runtimeEnvironments.list()).map((environment) => {
+      const hostId = toRuntimeExecutionHostId(environment.id)
+      const sshTargetId = getRuntimeSshAccess(environment)?.sshTargetId
+      if (sshTargetId) {
+        sshHostIdByRuntimeHostId.set(hostId, toSshExecutionHostId(sshTargetId))
+      }
+      return hostId
+    })
+    return { hostIds, sshHostIdByRuntimeHostId }
   } catch (err) {
     console.warn('Failed to list runtime session hosts for startup:', err)
-    return []
+    return { hostIds: [], sshHostIdByRuntimeHostId }
   }
 }
 
@@ -111,7 +123,7 @@ export function useAppStartupHydration(onOnboardingLoaded: (state: OnboardingSta
         // Runtime session hosts need no repo state; overlap their IPC and handle rejection until the later await.
         const runtimeHostsPromise = timeRendererStartupStep(
           'list-runtime-session-hosts',
-          listRuntimeSessionHostIdsForStartup
+          listRuntimeSessionHostsForStartup
         )
         runtimeHostsPromise.catch(() => {})
         // Skip remote catalogs for first paint; saved runtimes may wait a full connect timeout.
@@ -130,13 +142,14 @@ export function useAppStartupHydration(onOnboardingLoaded: (state: OnboardingSta
             actions.fetchFolderWorkspacesForAllHosts({ remoteHosts: 'skip' })
           )
         })()
-        const sessionReadPromise = runtimeHostsPromise.then((startupRuntimeHostIds) =>
+        const sessionReadPromise = runtimeHostsPromise.then((startupRuntimeHosts) =>
           // Restore cached runtime-host partitions without network waits; skip unreadable ones.
           timeRendererStartupStep('session-get', () =>
             fetchWorkspaceSessionWithRuntimeHostOwners(
               window.api.session,
               useAppStore.getState().repos,
-              startupRuntimeHostIds
+              startupRuntimeHosts.hostIds,
+              startupRuntimeHosts.sshHostIdByRuntimeHostId
             )
           )
         )
