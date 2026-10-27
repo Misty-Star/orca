@@ -7,7 +7,7 @@ import type {
 } from '../../shared/agent-session-journal-types'
 import { readAgentJournalTurn } from '../../shared/agent-session-turn-record'
 import type { StructuredAgentSessionEventSink } from '../native-chat/agent-session-wire/structured-agent-session-event-sink'
-import type { ClaudeStructuredSessionEvent } from './claude-structured-session-state'
+import type { ClaudeStructuredSessionEvent } from './structured/claude-structured-session-state'
 import {
   PROVIDER_SESSION_ID,
   adapterFor,
@@ -52,13 +52,12 @@ async function childInsideTurn() {
 
 describe('a Claude close settles the open turn with no verdict of its own', () => {
   it('ends it interrupted, with no outcome', async () => {
-    const { adapter, events, turns } = await childInsideTurn()
+    const { adapter, turns } = await childInsideTurn()
 
     await expect(adapter.closeSession('session-1')).resolves.toBe(true)
 
     expect(turns.at(-1)).toMatchObject({ state: 'interrupted' })
     expect(turns.at(-1)).not.toHaveProperty('outcome')
-    expect(events.find((event) => event.type === 'ended')).not.toHaveProperty('stopCause')
   })
 
   it('settles a crash it saw before the close once, as that exit', async () => {

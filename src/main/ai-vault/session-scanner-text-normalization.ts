@@ -1,5 +1,5 @@
 import { sliceAtCodeUnitLimit } from '../../shared/surrogate-safe-text-slice'
-import { withoutNativeChatVisualDirectiveLines } from '../../shared/native-chat-visual-directive'
+import { withoutNativeChatVisualDirectiveLines } from '../../shared/native-chat/native-chat-visual-directive'
 
 export { sliceAtCodeUnitLimit }
 
@@ -16,7 +16,8 @@ const XML_INSTRUCTIONS_PREFIX = '<INSTRUCTIONS>'
 const HIDDEN_TEXT_BLOCKS = [
   { name: 'system-reminder', closeTag: '</system-reminder>' },
   { name: 'codex_internal_context', closeTag: '</codex_internal_context>' },
-  { name: 'goal_context', closeTag: '</goal_context>' }
+  { name: 'goal_context', closeTag: '</goal_context>' },
+  { name: 'current_datetime', closeTag: '</current_datetime>' }
 ] as const
 
 type TextBuilder = {

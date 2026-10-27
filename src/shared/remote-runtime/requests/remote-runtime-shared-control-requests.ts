@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { abortSignalReason } from '../../abort-signal-reason'
-import { serializeRemoteRuntimeRpcRequest } from '../../remote-runtime-memory-limits'
+import { serializeRemoteRuntimeRpcRequest } from '../remote-runtime-memory-limits'
 import {
   prepareRemoteRuntimeRequest,
   releaseRemoteRuntimePreparedRequest,
@@ -8,9 +8,9 @@ import {
 } from './remote-runtime-prepared-request-admission'
 import { remoteRuntimeTimeoutError } from './remote-runtime-request-frames'
 import type { RuntimeOrchestrationEnvelope, RuntimeRpcResponse } from '../../runtime-rpc-envelope'
-import { toRemoteRuntimeClientError } from '../../remote-runtime-shared-control-protocol'
-import { rejectSharedControlPendingRequest } from '../../remote-runtime-shared-control-state'
-import type { SharedControlPendingRequest } from '../../remote-runtime-shared-control-types'
+import { toRemoteRuntimeClientError } from '../control/remote-runtime-shared-control-protocol'
+import { rejectSharedControlPendingRequest } from '../control/remote-runtime-shared-control-state'
+import type { SharedControlPendingRequest } from '../control/remote-runtime-shared-control-types'
 
 const MAX_RETAINED_METHOD_CHARS = 256
 
@@ -25,8 +25,7 @@ export function requestSharedControl<TResult>(args: {
   send: (requestId: string) => void
   retireRequestId?: (requestId: string) => void
   signal?: AbortSignal
-  // Why: default off — ordinary short RPCs keep an absolute deadline. Only
-  // long-polls routed through this path opt in so keepalives extend them.
+  // Only long-polls opt into keepalive refresh; short RPCs retain absolute deadlines.
   refreshTimeoutOnKeepalive?: boolean
   /** Runs once the socket is ready, just before sending; a throw rejects without sending. */
   beforeSend?: () => void

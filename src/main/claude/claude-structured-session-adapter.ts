@@ -1,4 +1,3 @@
-import { requireLegacyAgentSessionAccountHome } from '../../shared/agent-session-account-home'
 import { waitForPromiseWithSignal } from '../../shared/abort-signal-reason'
 import { dispatchClaudeCommand } from './claude-structured-command-dispatch'
 import type {
@@ -8,10 +7,10 @@ import type {
 } from '../native-chat/agent-session-wire/structured-agent-session-adapter'
 import { stopCurrentClaudeBackgroundTasks } from './claude-structured-control-actions'
 import { claudeHeldSends, claudeHoldsDispatch } from './claude-command-lifecycle'
-import { releaseClaudeAcquisition } from './claude-structured-acquisition-release'
-import { acquireClaudeSession } from './claude-structured-session-acquisition'
+import { releaseClaudeAcquisition } from './structured/claude-structured-acquisition-release'
+import { acquireClaudeSession } from './structured/claude-structured-session-acquisition'
 import { supportsClaudeStructuredLocation } from './claude-structured-location-support'
-import { setClaudeStructuredSessionOption } from './claude-structured-options'
+import * as claudeOptions from './claude-structured-options'
 import { dispatchClaudeMessage } from './claude-structured-message-options'
 import { readClaudeStructuredSessionOptions } from './claude-structured-session-options'
 import {
@@ -21,7 +20,7 @@ import {
   type ClaudeSessionExit,
   type ClaudeStructuredSessionAdapterDeps,
   type ClaudeStructuredSessionEvent
-} from './claude-structured-session-state'
+} from './structured/claude-structured-session-state'
 import {
   closeAllClaudeSessions,
   closeClaudeSession,
@@ -35,7 +34,6 @@ import {
   type ClaudeExitLifecycle
 } from './claude-structured-session-exit-lifecycle'
 import type { AgentSessionBackgroundTaskState } from '../../shared/agent-session-wire'
-import { resolveClaudeProviderHistoryWindow } from './claude-structured-history-window'
 import { drainClaudeChildWork } from './claude-child-work-evidence'
 import { emitClaudeStructuredSessionEvent } from './claude-structured-event-delivery'
 import {
@@ -46,14 +44,9 @@ import {
 } from './claude-structured-prompt-ownership'
 import { claudePromptCancelRoute } from './claude-structured-prompt-replies'
 import { claudeForkForRewind } from './claude-rewind-fork'
-import { openClaudeStructuredSession } from './claude-structured-session-open'
+import { openClaudeStructuredSession } from './structured/claude-structured-session-open'
 
 export type { ClaudeStructuredLaunch } from './claude-structured-launch-resolution'
-export type {
-  ClaudeAuthDiagnostic,
-  ClaudeStructuredSessionAdapterDeps,
-  ClaudeStructuredSessionEvent
-} from './claude-structured-session-state'
 
 export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAdapter {
   private readonly sessions = new Map<string, ClaudeSession>()
@@ -118,17 +111,6 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
   /** Await exit publication after cleanup/cursor writes; unproven exits stay indexed for retry. */
   drainObservedExits = (): Promise<void> => drainClaudeObservedExits(this.exits)
 
-  /** Restart reconciliation reads the transcript a resume replays; these maps track liveness. */
-  providerHistoryWindow: NonNullable<StructuredAgentSessionAdapter['providerHistoryWindow']> = (
-    input
-  ) =>
-    resolveClaudeProviderHistoryWindow({
-      identity: input.identity,
-      accountHomePath: requireLegacyAgentSessionAccountHome(input.accountHome).path,
-      hasLiveSession:
-        this.sessions.has(input.identity.sessionId) || this.exits.has(input.identity.sessionId)
-    })
-
   private emit(session: ClaudeSession | null, event: ClaudeStructuredSessionEvent): void {
     emitClaudeStructuredSessionEvent({
       session,
@@ -171,8 +153,6 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
         this.deps.onDispatchSettledLate?.({ sessionId: request.sessionId, ...settlement }),
       ...(this.deps.requestTimeoutMs === undefined ? {} : { timeoutMs: this.deps.requestTimeoutMs })
     })
-  // End the session on Stop: interrupts may leave the turn or background work running.
-  stopEndsSession = (): boolean => true
   awaitStoppedRequestEnd = claudeStoppedRequestEndWait(this.sessions)
   routePromptCancel = claudePromptCancelRoute
   dismissPrompt: NonNullable<StructuredAgentSessionAdapter['dismissPrompt']> = (request) =>
@@ -205,6 +185,9 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
     this.sessions.get(sessionId)?.commands.commands
   readonly atRestCommands: ClaudeStructuredSessionAdapterDeps['atRestCommands']
   holdsDispatch = (sessionId: string): boolean => claudeHoldsDispatch(this.sessions.get(sessionId))
+  requiresModelTransitionRestart = claudeOptions.claudeModelTransitionRestart(this.sessions)
+  liveTurnId = (sessionId: string): string | null | undefined =>
+    this.sessions.get(sessionId)?.translator?.currentTurnId
   heldSends = (sessionId: string): ReadonlySet<string> | undefined => {
     const session = this.sessions.get(sessionId) ?? this.exits.get(sessionId)?.session
     const held = session && claudeHeldSends(session)
@@ -221,7 +204,7 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
   answerPrompt: StructuredAgentSessionAdapter['answerPrompt'] = (request) =>
     settleClaudePromptFreeingChild(this.asker(request), answerClaudeStructuredPrompt)
   setOption: StructuredAgentSessionAdapter['setOption'] = (input) =>
-    setClaudeStructuredSessionOption(
+    claudeOptions.setClaudeStructuredSessionOption(
       this.session(input.sessionId),
       input,
       this.deps.requestTimeoutMs
@@ -256,6 +239,9 @@ export class ClaudeStructuredSessionAdapter implements StructuredAgentSessionAda
 
   releaseAcquisition = (input: { sessionId: string }): Promise<boolean> =>
     this.afterClose(input.sessionId, () => this.releaseProviderSession(input.sessionId))
+  acknowledgeSessionRelease = (sessionId: string): void => {
+    this.settledExitErrors.delete(sessionId)
+  }
   hasOwnedAcquisition = (sessionId: string): boolean =>
     this.acquisitions.get(sessionId) !== undefined ||
     this.sessions.has(sessionId) ||

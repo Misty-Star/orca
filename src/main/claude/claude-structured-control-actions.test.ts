@@ -11,7 +11,10 @@ import {
   runClaudeControl
 } from './claude-agent-sdk-control-requests'
 import { buildClaudePromptReply, ClaudePromptRegistry } from './claude-structured-prompt-replies'
-import type { ClaudeDispatchWaiter, ClaudeSession } from './claude-structured-session-state'
+import type {
+  ClaudeDispatchWaiter,
+  ClaudeSession
+} from './structured/claude-structured-session-state'
 import { ClaudeChildWorkDecoder } from './claude-child-work-decoder'
 import { sessionFor, userMessage } from './claude-structured-dispatch-test-support'
 
@@ -38,6 +41,54 @@ function sessionWith(input: {
 }
 
 describe('cancelClaudeTurn', () => {
+  it.each(['deadline', 'replacement'])(
+    'bounds the legacy withdrawal sweep and retains confirmed sends: %s',
+    async (mode) => {
+      let current = true
+      const { session, cancelAsyncMessage } = sessionWith({
+        capabilities: ['interrupt_receipt_v1'],
+        interrupt: async () => {
+          vi.setSystemTime(2_900)
+          return { still_queued: ['queued-1', 'queued-2', 'queued-3'] }
+        }
+      })
+      cancelAsyncMessage.mockImplementation(
+        async (uuid: string, options: { timeoutMs: number }) => {
+          if (uuid === 'queued-1') {
+            current = mode !== 'replacement'
+            return true
+          }
+          return runClaudeControl(
+            'cancel_async_message',
+            () => new Promise<boolean>(() => {}),
+            options.timeoutMs
+          )
+        }
+      )
+      const settled = vi.fn()
+      session.connection.send = vi.fn(async () => {
+        throw new Error('lost write')
+      })
+      await dispatchClaudeTurn(session, {
+        clientMessageId: 'client-1',
+        body: userMessage([{ type: 'text', text: 'queued' }])
+      })
+      session.retiredDispatchWaiters[0]!.sentUuid = 'queued-1'
+      vi.useFakeTimers()
+      vi.setSystemTime(0)
+      try {
+        const stopping = cancelClaudeTurn(session, 3_000, () => current, settled, 0)
+        await vi.advanceTimersByTimeAsync(100)
+        expect(await stopping).toEqual({ cancelled: true })
+        expect(cancelAsyncMessage).toHaveBeenCalledTimes(mode === 'deadline' ? 2 : 1)
+        expect(settled).toHaveBeenCalledOnce()
+        expect(session.retiredDispatchWaiters).toEqual([])
+      } finally {
+        vi.useRealTimers()
+      }
+    }
+  )
+
   it('interrupts without a receipt on an older CLI and reports the turn cancelled', async () => {
     const { session, interrupt, cancelAsyncMessage } = sessionWith({
       interrupt: async () => undefined
@@ -239,6 +290,7 @@ describe('answerClaudePrompt', () => {
     session.translator = {
       handle: vi.fn(),
       openTurnInLiveProviderCycle: false,
+      openTurnHasInputWork: false,
       journalPrompts: {
         resolve: resolvePrompt,
         handOver: () => () => {},
@@ -247,12 +299,14 @@ describe('answerClaudePrompt', () => {
         whenWritten: () => undefined
       },
       currentTurnId: null,
+      currentTurnScope: () => ({ kind: 'thread' }),
       commandTurnId: null,
       beginCommand: vi.fn(),
       forgetCommand: vi.fn(),
       commandInterruptRequested: vi.fn(),
       flush: vi.fn(),
       contextActivity: 0,
+      finalOutputAdmitted: true,
       markContextActivity: vi.fn(),
       subscribeContextUsageRequests: () => () => {},
       recordContextReport: () => {},

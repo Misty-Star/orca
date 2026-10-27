@@ -1,3 +1,6 @@
+import { isCodexAppServerRequestError } from './app-server/codex-app-server-request-error'
+import { agentSessionFailureFact, providerDiagnosticOf } from '../../shared/agent-session-failure'
+import * as turnEnd from './codex-structured-turn-end-settlement'
 import {
   AgentSessionPromptAnswerRejectedError,
   AgentSessionPromptUnavailableError,
@@ -13,6 +16,8 @@ import {
 import { requireLiveCodexSession, type CodexSession } from './codex-structured-session-state'
 import { interruptCodexTurn } from './codex-structured-turn-cancellation'
 import { codexStopTarget, interruptOpeningCodexTurn } from './codex-structured-turn-open-wait'
+import { stopCodexGoal } from './codex-structured-goal-stop'
+import { CODEX_STOP_GRACE_MS } from './codex-request-end-wait'
 
 type CancelInput = Parameters<StructuredAgentSessionAdapter['cancelTurn']>[0]
 type AnswerInput = Parameters<StructuredAgentSessionAdapter['answerPrompt']>[0]
@@ -40,12 +45,17 @@ async function cancelCodexConversation(
   session: CodexSession
 ): Promise<AgentSessionCancelOutcome> {
   const { request, sessions, requestTimeoutMs } = input
+  const stoppedAt = request.stoppedAt ?? Date.now()
+  const generation = session.acquisitionGeneration
   const liveTurnId = request.resolveLiveTurnId?.() ?? null
   // A command's journal turn can exist before its interruptible provider turn.
   const target = liveTurnId === null ? codexStopTarget(session) : { turnId: liveTurnId }
   // Opening waits can outlive their session; recheck ownership after awaiting.
   const current = (): boolean =>
-    sessions.get(request.sessionId) === session && !session.ended && session.fence === request.fence
+    sessions.get(request.sessionId) === session &&
+    !session.ended &&
+    session.fence === request.fence &&
+    session.acquisitionGeneration === generation
   if (!current()) {
     return { cancelled: false }
   }
@@ -60,12 +70,18 @@ async function cancelCodexConversation(
     return { cancelled: false }
   }
   const interrupt = () =>
-    interruptCodexTurn({ session, threadId: session.threadId, turnId, requestTimeoutMs })
+    interruptCodexTurn({ session, threadId: session.threadId, turnId, requestTimeoutMs, stoppedAt })
   if (!('opening' in target)) {
     return stoppedTurn(await interrupt(), journalTurnId)
   }
   return stoppedTurn(
-    await interruptOpeningCodexTurn(session, turnId, interrupt, current),
+    await interruptOpeningCodexTurn(
+      session,
+      turnId,
+      interrupt,
+      current,
+      stoppedAt + CODEX_STOP_GRACE_MS
+    ),
     journalTurnId
   )
 }
@@ -77,6 +93,20 @@ export async function cancelCodexStructuredTurn(input: {
 }): Promise<AgentSessionCancelOutcome> {
   const { request, sessions, requestTimeoutMs } = input
   const session = requireLiveCodexSession(sessions, request.sessionId)
+  if (request.stoppedAt !== undefined && !request.prompt) {
+    const generation = session.acquisitionGeneration
+    return stopCodexGoal({
+      session,
+      stoppedAt: request.stoppedAt,
+      timeoutMs: requestTimeoutMs,
+      current: () =>
+        sessions.get(request.sessionId) === session &&
+        !session.ended &&
+        session.fence === request.fence &&
+        session.acquisitionGeneration === generation,
+      interrupt: () => cancelCodexConversation(input, session)
+    })
+  }
   const prompt = request.prompt
   const requestedTurnId = request.turnId
   if (requestedTurnId === undefined) {
@@ -88,7 +118,13 @@ export async function cancelCodexStructuredTurn(input: {
   }
   if (!prompt) {
     return stoppedTurn(
-      await interruptCodexTurn({ session, threadId: session.threadId, turnId, requestTimeoutMs }),
+      await interruptCodexTurn({
+        session,
+        threadId: session.threadId,
+        turnId,
+        requestTimeoutMs,
+        stoppedAt: request.stoppedAt ?? Date.now()
+      }),
       requestedTurnId
     )
   }
@@ -170,6 +206,34 @@ export async function answerCodexStructuredPrompt(input: {
     answerCodexPrompt(session.prompts, session.connection, claim, prepared)
   } catch (error) {
     session.prompts.releaseClaim(claim)
+    throw error
+  }
+}
+
+/** The reply acknowledges receipt; the translator observes turn completion separately. */
+export async function compactCodexStructuredSession(
+  session: CodexSession,
+  input: Parameters<NonNullable<StructuredAgentSessionAdapter['compact']>>[0],
+  requestTimeoutMs: number | undefined
+): ReturnType<NonNullable<StructuredAgentSessionAdapter['compact']>> {
+  session.translator?.beginCommand(input.command)
+  try {
+    await session.connection.request(
+      'thread/compact/start',
+      { threadId: session.threadId },
+      { timeoutMs: requestTimeoutMs }
+    )
+    return { state: 'accepted', providerIdentity: null }
+  } catch (error) {
+    session.translator?.forgetCommand(input.command.turnId)
+    if (isCodexAppServerRequestError(error)) {
+      return {
+        state: 'rejected',
+        ...turnEnd.codexDispatchRejection(
+          agentSessionFailureFact('providerRejected', { detail: providerDiagnosticOf(error) })
+        )
+      }
+    }
     throw error
   }
 }

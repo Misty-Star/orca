@@ -5,16 +5,18 @@ import { MobileSessionHeaderIconButton } from './MobileSessionHeaderIconButton'
 import { MobileSessionTabStrip } from './MobileSessionTabStrip'
 import { StatusDot } from '../components/StatusDot'
 import { styles } from './mobile-session-styles'
+import { useMobileColorScheme } from '../theme/use-mobile-color-scheme'
 import { useHostSidebarReveal } from '../layout/host-sidebar-reveal'
 import { useResponsiveLayout } from '../layout/responsive-layout'
 import type { MobileSessionController } from './use-mobile-session-controller'
 
 export function MobileSessionHeader({ controller }: { controller: MobileSessionController }) {
+  useMobileColorScheme()
   const {
     hostId,
     isFolderWorkspaceRoute,
     isFloatingWorkspaceRoute,
-    connState,
+    presentedConnState,
     forceReconnectHost,
     worktreeName,
     activePanel,
@@ -66,7 +68,7 @@ export function MobileSessionHeader({ controller }: { controller: MobileSessionC
             accessibilityRole={showConnectionRetry ? 'button' : undefined}
             accessibilityLabel={showConnectionRetry ? 'Reconnect to desktop' : undefined}
           >
-            <StatusDot state={connState} />
+            <StatusDot state={presentedConnState} />
             <Text style={styles.sessionMetaText} numberOfLines={1}>
               {terminalSummary}
             </Text>

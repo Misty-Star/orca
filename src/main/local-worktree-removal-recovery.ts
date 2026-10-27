@@ -1,9 +1,9 @@
 import type { RemoveWorktreeResult } from '../shared/worktree/create-types'
+import { pruneGitWorktrees } from './git/worktree-prune-guard'
 import type { GitWorktreeInfo } from '../shared/worktree/types'
 import { assertWorktreeUnlockedForRemoval } from '../shared/worktree/removal'
 import { areWorktreePathsEqual } from './git/worktree-path-comparison'
 import { formatWorktreeRemovalError } from './ipc/worktree-logic'
-import { gitExecFileAsync } from './git/runner'
 import { listWorktreesStrict, type GitWorktreeExecOptions } from './git/worktree'
 import { removeLocalWorktreePath } from './local-worktree-filesystem'
 
@@ -16,11 +16,12 @@ type LocalWindowsRemovalRecoveryArgs = {
   registeredWorktree: Pick<GitWorktreeInfo, 'branch' | 'head' | 'locked' | 'lockReason'>
   deleteBranch: boolean
   closeWatcher: (worktreePath: string) => Promise<void>
+  signal?: AbortSignal
 }
 
 type StaleLocalWorktreeRegistrationArgs = Omit<
   LocalWindowsRemovalRecoveryArgs,
-  'error' | 'force' | 'closeWatcher'
+  'error' | 'force' | 'closeWatcher' | 'signal'
 >
 
 function preservedBranchResult(
@@ -81,10 +82,7 @@ async function removeRequiredGitWorktreeRegistration(
   let result: RemoveWorktreeResult | undefined
   let removalError: unknown
   try {
-    await gitExecFileAsync(['worktree', 'prune'], {
-      cwd: args.repoPath,
-      ...args.localWorktreeGitOptions
-    })
+    await pruneGitWorktrees({ cwd: args.repoPath, ...args.localWorktreeGitOptions })
     result = preservedBranchResult(args.registeredWorktree, args.deleteBranch)
   } catch (error) {
     removalError = error
@@ -120,7 +118,11 @@ export async function recoverLocalWindowsWorktreeRemoval(
   // Release watcher handles before recursively finishing Git’s partial removal; abort if closing fails.
   await args.closeWatcher(args.canonicalWorktreePath)
   try {
-    await removeLocalWorktreePath(args.canonicalWorktreePath, args.localWorktreeGitOptions)
+    await removeLocalWorktreePath(
+      args.canonicalWorktreePath,
+      args.localWorktreeGitOptions,
+      args.signal
+    )
   } catch (error) {
     throw new Error(formatWorktreeRemovalError(error, args.canonicalWorktreePath, args.force))
   }

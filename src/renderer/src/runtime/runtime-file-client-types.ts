@@ -1,6 +1,5 @@
 import type { RuntimeClientTarget } from '../../../shared/runtime-client-target'
 import type { LocalFileAccess } from '../../../shared/local-file-access'
-import type { RuntimeNativeChatFileContext } from '../../../shared/runtime-file-contracts'
 
 export type RuntimeReadableFileContent = {
   mediaUrl?: string
@@ -24,8 +23,12 @@ export type RuntimeFileReadArgs = {
   access?: LocalFileAccess
   /** Host grant for a runtime file outside every workspace (see OpenFile.terminalArtifactGrantId). */
   terminalArtifactGrantId?: string
+  /** Pairing that issued the grant; a same-id re-pair must not answer for it. */
+  expectedEnvironmentPairingRevision?: number
   /** Set by readers that render the bytes: page a remote PDF/image too large for one reply. */
   pageOversizedBinary?: boolean
+  /** A user act (open, expand, Retry); may start a stopped WSL distro. Local reads only. */
+  wakeWslDistro?: boolean
 }
 
 export type RuntimeFileOperationArgs = {
@@ -38,8 +41,6 @@ export type RuntimeFileOperationArgs = {
   expectedSshTargetId?: string
   expectedSshConnectionGeneration?: number
   expectedExternalSshTargetId?: string
-  /** The chat that links a host file outside every workspace; its host grants the read. */
-  nativeChatContext?: RuntimeNativeChatFileContext
 }
 
 export type RuntimeFileDownloadResult =

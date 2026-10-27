@@ -2,7 +2,7 @@ import type { CommandSpec } from '../args'
 import { GLOBAL_FLAGS } from '../args'
 
 const CONNECTOR_NOTES = [
-  'Development only: drives the connector seam as a `dev` conversation, without Slack. The host refuses it unless its experimentalConnectors setting is on.',
+  'Development only: drives the connector seam as a `dev` conversation, without Orca Cloud. The host refuses it unless its experimentalConnectors setting is on.',
   'A retry with the same --delivery-id and payload returns the first answer instead of delivering again.'
 ]
 
@@ -62,6 +62,17 @@ export const CONNECTOR_COMMAND_SPECS: CommandSpec[] = [
     ]
   },
   {
+    path: ['connector', 'cancel'],
+    hidden: true,
+    summary: 'Cancel what a dev connector conversation is doing',
+    usage: 'orca connector cancel --conversation <id> --delivery-id <id> [--json]',
+    allowedFlags: [...GLOBAL_FLAGS, 'conversation', 'delivery-id'],
+    notes: [
+      ...CONNECTOR_NOTES,
+      'Drops follow-ups not yet sent, rejects a pending approval, or interrupts a working agent with one Escape. An idle agent is left alone.'
+    ]
+  },
+  {
     path: ['connector', 'watch'],
     hidden: true,
     summary: 'Collect connector conversation events for a while',
@@ -70,6 +81,17 @@ export const CONNECTOR_COMMAND_SPECS: CommandSpec[] = [
     notes: [
       CONNECTOR_NOTES[0],
       'Prints a snapshot of every linked conversation, then each event (linked, prompt, turn-started, turn-ended) seen in the window; --for-ms defaults to 30000.'
+    ]
+  },
+  {
+    path: ['connector', 'reply'],
+    hidden: true,
+    summary: 'Reply in the thread whose message started this agent',
+    usage: 'orca connector reply --text <text> [--json]',
+    allowedFlags: [...GLOBAL_FLAGS, 'text'],
+    notes: [
+      'Run it from an agent a Slack, Discord or Linear message started. Orca posts the text to that thread through Orca Cloud; this machine needs no token for the service.',
+      'Experimental: needs the experimentalConnectors setting and a desktop signed in to Orca.'
     ]
   }
 ]

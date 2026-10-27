@@ -13,8 +13,7 @@ import type {
 } from '../../shared/browser-workspace-types'
 import {
   applyPendingBrowserCookieImports,
-  clearPendingBrowserCookieImport,
-  setPendingBrowserCookieImport
+  clearPendingBrowserCookieImport
 } from './browser-session-cookie-staging'
 import {
   BROWSER_SESSION_META_FILE_NAME,
@@ -56,6 +55,8 @@ class BrowserSessionRegistry {
   private activeOrcaProfileId = DEFAULT_LOCAL_ORCA_PROFILE_ID
   private metadataPathOverride: string | null = null
   private defaultPartition = ORCA_BROWSER_PARTITION
+  // Why: profiles change from IPC, the CLI and managed-profile owners; open windows and paired clients only learn of it here.
+  onProfilesChanged: (() => void) | null = null
 
   constructor() {
     this.resetDefaultProfile()
@@ -146,15 +147,6 @@ class BrowserSessionRegistry {
     })
   }
 
-  setPendingCookieImport(partition: string, stagingDbPath: string): void {
-    setPendingBrowserCookieImport({
-      resolveMetadataPath: () => this.metadataPath,
-      defaultPartition: this.defaultPartition,
-      partition,
-      stagingDbPath
-    })
-  }
-
   clearPendingCookieImport(partition: string): void {
     clearPendingBrowserCookieImport({
       resolveMetadataPath: () => this.metadataPath,
@@ -234,6 +226,7 @@ class BrowserSessionRegistry {
     }
     this.profiles.set(id, profile)
     this.persistProfiles()
+    this.onProfilesChanged?.()
     return profile
   }
 
@@ -252,6 +245,7 @@ class BrowserSessionRegistry {
     } else {
       this.persistProfiles()
     }
+    this.onProfilesChanged?.()
     return updated
   }
 
@@ -262,6 +256,7 @@ class BrowserSessionRegistry {
     }
     this.profiles.delete(profileId)
     this.persistProfiles()
+    this.onProfilesChanged?.()
     forgetBrowserSitePermissions(profileId)
     forgetBrowserSiteDisplay(profileId)
     const meta = this.loadPersistedMeta()
@@ -309,6 +304,7 @@ class BrowserSessionRegistry {
         pendingCookieDbPath: null,
         pendingCookieImports
       })
+      this.onProfilesChanged?.()
 
       const sess = session.fromPartition(this.defaultPartition)
       await sess.clearStorageData({ storages: ['cookies'] })
