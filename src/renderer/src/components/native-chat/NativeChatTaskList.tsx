@@ -4,11 +4,13 @@ import { cn } from '@/lib/utils'
 import { translate } from '@/i18n/i18n'
 import {
   diffNativeChatTaskLists,
+  nativeChatCompletedTaskCount,
+  nativeChatTaskChangeWords,
   nativeChatTaskLabel,
   type NativeChatTask,
   type NativeChatTaskChange,
   type NativeChatTaskList as TaskList
-} from '../../../../shared/native-chat-task-list'
+} from '../../../../shared/native-chat/input/native-chat-task-list'
 
 function statusLabel(task: NativeChatTask): string {
   if (task.status === 'completed') {
@@ -21,22 +23,22 @@ function statusLabel(task: NativeChatTask): string {
 }
 
 function changeLabel(change: NativeChatTaskChange): string {
-  const values = { task: change.task.content }
-  switch (change.kind) {
+  const { key, task } = nativeChatTaskChangeWords(change)
+  switch (key) {
     case 'added':
-      return translate('components.native-chat.taskList.added', 'Added {{task}}', values)
+      return translate('components.native-chat.taskList.added', 'Added {{task}}', { task })
     case 'removed':
-      return translate('components.native-chat.taskList.removed', 'Removed {{task}}', values)
+      return translate('components.native-chat.taskList.removed', 'Removed {{task}}', { task })
     case 'started':
-      return translate('components.native-chat.taskList.started', 'Started {{task}}', values)
-    case 'completed':
-      return translate('components.native-chat.taskList.finished', 'Completed {{task}}', values)
-    case 'pending':
-      return translate('components.native-chat.taskList.reset', 'Marked pending: {{task}}', values)
-    case 'updated':
-      return translate('components.native-chat.taskList.updated', 'Updated {{task}}', {
-        task: nativeChatTaskLabel(change.task)
+      return translate('components.native-chat.taskList.started', 'Started {{task}}', { task })
+    case 'finished':
+      return translate('components.native-chat.taskList.finished', 'Completed {{task}}', { task })
+    case 'reset':
+      return translate('components.native-chat.taskList.reset', 'Marked pending: {{task}}', {
+        task
       })
+    case 'updated':
+      return translate('components.native-chat.taskList.updated', 'Updated {{task}}', { task })
   }
 }
 
@@ -88,7 +90,7 @@ export function NativeChatTaskList({
   previous?: TaskList
   presentation?: 'inline' | 'composer'
 }): React.JSX.Element {
-  const completed = list.tasks.filter((task) => task.status === 'completed').length
+  const completed = nativeChatCompletedTaskCount(list)
   if (presentation === 'composer') {
     return (
       <Collapsible className="rounded-md border border-border bg-muted/30">

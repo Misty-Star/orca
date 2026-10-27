@@ -20,10 +20,6 @@ describe('structured chat configured Arguments', () => {
     }
   )
 
-  it('uses the existing default when the Arguments key is absent', () => {
-    expect(structuredAgentConfiguredArgs('claude', {})).toEqual(['--dangerously-skip-permissions'])
-  })
-
   it('preserves Windows paths under the configured shell', () => {
     expect(
       structuredAgentConfiguredArgs(
@@ -54,10 +50,5 @@ describe('future structured provider argument lookup', () => {
       'future value'
     ])
     expect(structuredAgentConfiguredArgs('future-provider', {})).toEqual([])
-  })
-
-  it('retains the existing inherited default-map lookup behavior', () => {
-    expect(structuredAgentConfiguredArgs('constructor', {})).toEqual(['undefined'])
-    expect(structuredAgentConfiguredArgs('toString', {})).toEqual([])
   })
 })

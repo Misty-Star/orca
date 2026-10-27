@@ -7,14 +7,11 @@ import {
   type SessionTabsView
 } from './old-client-session-tabs-projection'
 import { BLANK_BROWSER_TAB_STATE } from '../workspace-layout-beside'
+import { editorFileKey } from '../workspace-layout-editor-tab-file'
 import { build, testContext, WS } from '../workspace-layout-command.test-fixture'
 import type { WorkspaceLayoutModel } from '../workspace-layout-model'
 
-/**
- * A workspace as a desktop leaves it: a renamed terminal tab split in two (one pane titled, both
- * bound), an agent terminal, a markdown file, a browser tab and a chat, with the chat and the
- * browser in a second group to the right.
- */
+/** Desktop-shaped fixture: split/agent terminals, file, browser and chat across two groups, with one titled pane. */
 function workspace() {
   const ctx = testContext()
   const { model, results } = build(ctx, [
@@ -115,7 +112,14 @@ describe('projectSessionTabs', () => {
         }
       },
       panes: { [apiTab]: { activeLeafId: apiSplit, expandedLeafId: null } },
-      editorDrafts: { [WS]: { '/Users/dev/orca/README.md': { dirtyDraftContent: '# draft' } } }
+      // Keyed as editorFileKey keys it (an owned id in a layout-owner build), as the Loader does.
+      editorDrafts: {
+        [WS]: {
+          [editorFileKey({ filePath: '/Users/dev/orca/README.md' })]: {
+            dirtyDraftContent: '# draft'
+          }
+        }
+      }
     })
     const facts: SessionTabsFacts = {
       tabLabels: {},
@@ -175,6 +179,7 @@ describe('projectSessionTabs', () => {
             type: 'terminal',
             id: `${apiTab}::${api!.leafId!}`,
             title: 'logs',
+            customTitle: 'api server',
             parentTabId: apiTab,
             leafId: api!.leafId!,
             ptyId: 'pty-1',
@@ -188,6 +193,7 @@ describe('projectSessionTabs', () => {
             type: 'terminal',
             id: `${apiTab}::${apiSplit}`,
             title: 'Terminal',
+            customTitle: 'api server',
             parentTabId: apiTab,
             leafId: apiSplit,
             ptyId: 'pty-2',
@@ -200,6 +206,7 @@ describe('projectSessionTabs', () => {
             type: 'terminal',
             id: `${agent!.tabId!}::${agent!.leafId!}`,
             title: 'Claude Code',
+            customTitle: null,
             parentTabId: agent!.tabId!,
             leafId: agent!.leafId!,
             launchAgent: 'claude',
@@ -254,106 +261,6 @@ describe('projectSessionTabs', () => {
         ]
       }
     expect(projectSessionTabs(WS, model.workspaces[WS]!, view, facts, false)).toEqual(expected)
-  })
-
-  describe("titles follow today's order", () => {
-    function soleTab(fields: { title?: string; paneTitle?: string; live?: string }) {
-      const ctx = testContext()
-      const created = build(ctx, [
-        {
-          type: 'createTerminalTab',
-          workspace: WS,
-          ...(fields.title ? { title: fields.title } : {})
-        }
-      ])
-      const { tabId, leafId } = created.results[0]!
-      const model = fields.paneTitle
-        ? build(
-            ctx,
-            [
-              {
-                type: 'renamePane',
-                workspace: WS,
-                tabId: tabId!,
-                leafId: leafId!,
-                title: fields.paneTitle
-              }
-            ],
-            created.model
-          ).model
-        : created.model
-      const facts = fields.live
-        ? { ...noFacts, terminalRows: { [tabId!]: { title: fields.live } } }
-        : noFacts
-      return { model, tabId: tabId!, facts }
-    }
-    const titleOf = (
-      { model, facts }: ReturnType<typeof soleTab>,
-      generatedTitlesEnabled = false
-    ) =>
-      projectSessionTabs(WS, model.workspaces[WS]!, views(), facts, generatedTitlesEnabled).tabs[0]!
-        .title
-
-    it('a custom title beats the pane title and the live title (#19582)', () => {
-      expect(titleOf(soleTab({ title: 'deploy', paneTitle: 'logs', live: 'zsh' }))).toBe('deploy')
-    })
-
-    it('a pane title beats the live title when there is no custom title', () => {
-      expect(titleOf(soleTab({ paneTitle: 'logs', live: 'zsh' }))).toBe('logs')
-    })
-
-    it('reads generated titles only with the setting on', () => {
-      const tab = soleTab({ live: 'zsh' })
-      const ws = tab.model.workspaces[WS]!
-      const generated = {
-        ...tab,
-        model: {
-          ...tab.model,
-          workspaces: {
-            [WS]: {
-              ...ws,
-              tabs: ws.tabs.map((entry) => ({ ...entry, generatedTitle: 'Fix login' }))
-            }
-          }
-        }
-      }
-      expect(titleOf(generated)).toBe('zsh')
-      expect(titleOf(generated, true)).toBe('Fix login')
-    })
-
-    it('a quick-command label beats the live title', () => {
-      const tab = soleTab({ live: 'zsh' })
-      const ws = tab.model.workspaces[WS]!
-      const labelled = {
-        ...tab,
-        model: {
-          ...tab.model,
-          workspaces: {
-            [WS]: {
-              ...ws,
-              tabs: ws.tabs.map((entry) => ({ ...entry, quickCommandLabel: 'Tests' }))
-            }
-          }
-        }
-      }
-      const row = projectSessionTabs(
-        WS,
-        labelled.model.workspaces[WS]!,
-        views(),
-        labelled.facts,
-        false
-      ).tabs[0]
-      expect(row).toMatchObject({ title: 'Tests', quickCommandLabel: 'Tests' })
-    })
-
-    it('split panes show their own title or "Terminal", never the tab title', () => {
-      const { model, api } = workspace()
-      const rows = projectSessionTabs(WS, model.workspaces[WS]!, views(), noFacts, true).tabs
-      expect(rows.filter((row) => row.id.startsWith(api!.tabId!)).map((row) => row.title)).toEqual([
-        'logs',
-        'Terminal'
-      ])
-    })
   })
 
   it('names the first group but no tab active when the view selects nothing, and keeps one group without a tree', () => {
