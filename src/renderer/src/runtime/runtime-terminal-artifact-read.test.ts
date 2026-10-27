@@ -163,7 +163,10 @@ describe('a granted host file outside every workspace', () => {
           _meta: { runtimeId: 'remote-runtime' }
         }
       }
-      return createCompatibleRuntimeStatusResponseIfNeeded(args) ?? runtimeEnvironmentCall(args)
+      return (
+        createCompatibleRuntimeStatusResponseIfNeeded({ method: args.method }) ??
+        runtimeEnvironmentCall(args)
+      )
     })
     runtimeEnvironmentCall.mockImplementation(async () => {
       currentRevision = 42
@@ -227,7 +230,8 @@ describe('a granted host file outside every workspace', () => {
       if (failure === 'missing') {
         runtimeEnvironmentTransportCall.mockImplementation(
           (args) =>
-            createCompatibleRuntimeStatusResponseIfNeeded(args) ?? runtimeEnvironmentCall(args)
+            createCompatibleRuntimeStatusResponseIfNeeded({ method: args.method }) ??
+            runtimeEnvironmentCall(args)
         )
         runtimeEnvironmentCall.mockResolvedValue({
           id: 'resolve',
