@@ -129,7 +129,6 @@ export function getEditorPanelRenderModel({
   const inlineFileContent = activeFile.mode === 'edit' ? fileContents[activeFile.id] : undefined
   const customEditorContentReady =
     activeFile.mode === 'edit' &&
-    !hasViewModeToggle &&
     inlineFileContent !== undefined &&
     !inlineFileContent.loadError &&
     inlineFileContent.csvPreview === undefined &&
@@ -251,6 +250,7 @@ export function getEditorPanelRenderModel({
     inlineMarkdownRenderState,
     canShowMarkdownTableOfContents:
       viewerLanguage === 'markdown' &&
+      activeCustomEditor === null &&
       (hasViewModeToggle || activeFile.mode === 'markdown-preview'),
     canShowMarkdownPreview: canOpenMarkdownPreview({
       language: viewerLanguage,
