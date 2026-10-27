@@ -537,43 +537,40 @@ describe('MobileNativeChatQueuedMessages', () => {
       expect(empty.toJSON()).toBeNull()
     })
 
-    it('Clear all captures card ids while Resume and Steer stay available', async () => {
-      const release = Promise.withResolvers<boolean>()
-      const onClearAll = vi.fn(() => release.promise)
+    it('Clear all waits for a card on its way, then holds every card and Resume until it settles', async () => {
+      const send = Promise.withResolvers<boolean>()
+      const clear = Promise.withResolvers<boolean>()
+      const onClearAll = vi.fn(() => clear.promise)
       const onResume = vi.fn(async () => true)
-      const onSend = vi.fn(async () => true)
+      const onSend = vi.fn(() => send.promise)
       const mounted = await mountPaused({
-        cards: [waiting, card({ messageId: 'b' }), card({ messageId: 'c' })],
+        cards: [waiting, card({ messageId: 'b' })],
         pause: { reason: 'stopped' },
         onClearAll,
         onResume,
         onSend
       })
-      await act(async () =>
-        mounted.root
-          .findByProps({ accessibilityLabel: 'Delete every queued message' })
-          .props.onPress()
-      )
-      expect(onClearAll).toHaveBeenCalledExactlyOnceWith(['waiting-1', 'b', 'c'])
-      expect(
-        mounted.root.findByProps({ accessibilityLabel: 'Delete every queued message' }).props
-          .disabled
-      ).toBe(true)
-      const resume = mounted.root.findByProps({
-        accessibilityLabel: 'Resume sending the queued messages'
-      })
-      const steer = mounted.root.findAllByProps({
-        accessibilityLabel: 'Submit without interrupting the model'
-      })[0]
-      expect(resume.props.disabled).toBe(false)
-      expect(steer.props.disabled).toBe(false)
+      const control = (label: string, index = 0) =>
+        mounted.root.findAll(
+          (node) => typeof node.type === 'string' && node.props.accessibilityLabel === label
+        )[index]!
+      const labels = ['Delete every queued message', 'Resume sending the queued messages']
+      const steer = 'Submit without interrupting the model'
+      await act(async () => control(steer, 1).props.onPress())
+      expect(control(labels[0]!).props.disabled).toBe(true)
+      await act(async () => send.resolve(false))
+      // Same frame, before disabled state renders: the shared admission check refuses the rest.
       await act(async () => {
-        resume.props.onPress()
-        steer.props.onPress()
+        control(labels[0]!).props.onPress()
+        control(labels[1]!).props.onPress()
+        control(steer).props.onPress()
       })
-      expect(onResume).toHaveBeenCalledOnce()
-      expect(onSend).toHaveBeenCalledOnce()
-      await act(async () => release.resolve(true))
+      expect(onClearAll).toHaveBeenCalledExactlyOnceWith(['waiting-1', 'b'])
+      expect([onResume.mock.calls.length, onSend.mock.calls.length]).toEqual([0, 1])
+      const greyed = () => [...labels, steer].map((label) => control(label).props.disabled)
+      expect(greyed()).toEqual([true, true, true])
+      await act(async () => clear.resolve(false))
+      expect(greyed()).toEqual([false, false, false])
     })
 
     it('the chevron folds only the cards; the header and its actions stay', async () => {
