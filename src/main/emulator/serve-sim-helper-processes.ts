@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process'
 import { platform } from 'node:os'
 import { commandContainsToken } from '../../shared/command-token-scanner'
 import { iterateProcessOutputLines } from '../../shared/process-output-field-scanner'
+import { PS_MAX_BUFFER_BYTES } from '../../shared/process-table-snapshot'
 
 export type ServeSimHelperProcess = {
   pid: number
@@ -17,7 +18,7 @@ type ServeSimHelperProcessLookupOptions = {
 
 function execFileText(command: string, args: string[]): Promise<string> {
   return new Promise((resolve, reject) => {
-    execFile(command, args, { timeout: 5_000, maxBuffer: 1024 * 1024 }, (error, stdout) => {
+    execFile(command, args, { timeout: 5_000, maxBuffer: PS_MAX_BUFFER_BYTES }, (error, stdout) => {
       if (error) {
         reject(error)
         return
@@ -68,13 +69,19 @@ export async function listServeSimHelperProcessesForDevice(
   }
   const knownPid = options.helperPid
   const includeOrphaned = options.includeOrphaned === true
-  const output = await execFileText('ps', ['-axo', 'pid=,command=']).catch(() => '')
-  if (!output) {
+  if (knownPid === undefined && !includeOrphaned) {
     return []
   }
+  // The machine-wide table can exceed the capture ceiling because unrelated argv is unbounded.
+  // A session already has its helper PID, so keep the normal attach/readiness path bounded to one row.
+  const psArgs =
+    knownPid === undefined
+      ? ['-axo', 'pid=,command=']
+      : ['-p', String(knownPid), '-o', 'pid=,command=']
+  const output = await execFileText('ps', psArgs)
   return parseServeSimHelperProcesses(output).filter((helper) => {
-    if (knownPid !== undefined && helper.pid === knownPid) {
-      return true
+    if (knownPid !== undefined) {
+      return helper.pid === knownPid && commandTargetsDevice(helper.command, deviceUdid)
     }
     return includeOrphaned && commandTargetsDevice(helper.command, deviceUdid)
   })
