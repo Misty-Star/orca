@@ -8,11 +8,12 @@ import { structuredAgentSessionHostKey } from '@/runtime/structured-agent-sessio
 import type { AgentSessionQueuedMessageUpdateResult } from '../../../../shared/agent-session-wire'
 import { agentSessionSendBodyFingerprint } from '../../../../shared/structured-agent-session-send-mutation'
 import {
+  queuedCardOnScreen,
+  queuedEditChangedNotice,
   queuedMessageEditableText,
   queuedMessageWithEdit
 } from '../../../../shared/queued-message-edit'
 import { queuedEditNotice } from './queued-message-edit-notices'
-import { queuedEditChangedNotice } from '../../../../shared/queued-message-edit'
 import {
   createNativeChatQueuedEditDraft,
   discardNativeChatQueuedEdit,
@@ -26,7 +27,6 @@ import { settleNativeChatQueuedEdit } from './native-chat-queued-edit-outcome'
 import { readNativeChatComposerDraft } from './native-chat-composer-draft-store'
 import { structuredSessionOperationId } from './structured-agent-session-operation-id'
 import { startQueuedEditLease } from './structured-agent-session-queued-edit-lease'
-import { queuedCardOnScreen } from '../../../../shared/queued-message-edit'
 import {
   useNativeChatQueuedEditLifetime,
   nativeChatQueuedEditSaving,

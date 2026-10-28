@@ -692,14 +692,3 @@ it('selected slash membership uses real token starts and keeps Codex provider me
     expect(pickedSkillsInText(text, picked, ['$', '/'])).toEqual([])
   }
 })
-
-it('selected slash membership uses real token starts and keeps Codex provider membership dollar-only', () => {
-  const picked = [{ name: 'model', path: '/A/SKILL.md' }]
-  for (const text of ['/model', 'use /model,', '/model\nnext']) {
-    expect(pickedSkillsInText(text, picked, ['$', '/'])).toEqual(picked)
-    expect(pickedSkillsInText(text, picked)).toEqual([])
-  }
-  for (const text of ['/dir/model', '/model-extra', '/model:other', 'prefix/model']) {
-    expect(pickedSkillsInText(text, picked, ['$', '/'])).toEqual([])
-  }
-})
