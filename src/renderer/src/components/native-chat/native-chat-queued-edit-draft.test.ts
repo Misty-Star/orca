@@ -1,3 +1,4 @@
+import { structuredAgentSessionSendBody } from '../../../../shared/structured-agent-session-send-mutation'
 import { queuedMessageWithEdit } from '../../../../shared/queued-message-edit'
 import { promptTextContent } from './native-chat-prompt-document-text'
 // @vitest-environment happy-dom
@@ -195,6 +196,9 @@ it.each(['/', '$'] as const)(
     expect(promptSkillRefs(readNativeChatComposerDraft(edit.scopeKey).document)).toEqual(skills)
     const fields = nativeChatQueuedEditInput(edit, true, true)
     expect(fields.skills).toEqual(skills)
+    expect(structuredAgentSessionSendBody(text, [], skills).skills).toEqual(
+      sigil === '$' ? skills : undefined
+    )
     const result = queuedMessageWithEdit(queued, fields)
     expect(result).toEqual({ ok: true, body: queued })
     discardNativeChatQueuedEdit(edit)

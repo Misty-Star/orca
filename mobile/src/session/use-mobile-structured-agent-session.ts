@@ -185,7 +185,6 @@ export function useMobileStructuredAgentSession(
   })
   const { stopping } = turnIndicator
   const sendWithOutcome = useMobileStructuredSendWithOutcome({
-    composerScopeKey: args.composerScopeKey,
     agent,
     client,
     sessionId,

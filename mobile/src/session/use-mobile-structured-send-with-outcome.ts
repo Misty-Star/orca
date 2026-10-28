@@ -1,4 +1,3 @@
-import { readMobileNativeChatDraftInputs } from './native-chat/composer/mobile-native-chat-draft-inputs'
 import { selectAgentSessionCurrentRequests } from '../../../src/shared/agent-session-current-requests'
 
 import { useCallback } from 'react'
@@ -54,7 +53,6 @@ export type StructuredMobileSendAttachment =
 
 export function useMobileStructuredSendWithOutcome(args: {
   agent: string | null
-  composerScopeKey?: string | null
   client: RpcClient | null
   sessionId: string | null
   enabled: boolean
@@ -175,9 +173,7 @@ export function useMobileStructuredSendWithOutcome(args: {
         }
       }
       const wireText = nativeChatTextWithFileReferences(text, files)
-      const skills = takesSkills
-        ? (pickedSkills ?? readMobileNativeChatDraftInputs(args.composerScopeKey ?? null).skills)
-        : []
+      const skills = takesSkills ? (pickedSkills ?? []) : []
       let body: ReturnType<typeof structuredAgentSessionSendBody>
       try {
         body = structuredAgentSessionSendBody(wireText, imageAttachments, skills)
@@ -224,7 +220,6 @@ export function useMobileStructuredSendWithOutcome(args: {
       return outcome
     },
     [
-      args.composerScopeKey,
       accept,
       agent,
       client,

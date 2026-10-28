@@ -85,7 +85,7 @@ describe('mobile native-chat draft store', () => {
     expect(currentState().composerText).toBe('ping')
   })
 
-  it('retires sent skill identity only when the matching draft is cleared', () => {
+  it('keeps main picked refs across Send-clear but revokes them on a real token edit', () => {
     const scope = 'sent-skills'
     setMobileNativeChatDraftText(scope, '$review draft')
     updateMobileNativeChatDraftInputs(scope, () => ({
@@ -97,7 +97,11 @@ describe('mobile native-chat draft store', () => {
     clearMobileNativeChatDraftForSend(scope, generation - 1, '$review draft')
     expect(readMobileNativeChatDraftInputs(scope).skills).toHaveLength(1)
     clearMobileNativeChatDraftForSend(scope, generation, '$review draft')
-    expect(readMobileNativeChatDraftInputs(scope).skills).toEqual([])
+    expect(readMobileNativeChatPickedSkills(scope)).toEqual([
+      { name: 'review', path: '/remote/SKILL.md' }
+    ])
+    editMobileNativeChatDraft(scope, 'different text')
+    expect(readMobileNativeChatPickedSkills(scope)).toEqual([])
   })
 
   it('keeps a typed draft after the chat screen unmounts and remounts', async () => {

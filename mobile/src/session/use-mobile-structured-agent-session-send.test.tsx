@@ -1,3 +1,7 @@
+import {
+  updateMobileNativeChatDraftInputs,
+  resetMobileNativeChatDraftInputsForTests
+} from './native-chat/composer/mobile-native-chat-draft-inputs'
 import { createElement, useState } from 'react'
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -104,6 +108,7 @@ describe('mobile structured send actions', () => {
       client,
       sessionId: 'session-1',
       sourceIdentity: 'host-a\0workspace-a',
+      composerScopeKey: 'ordinary-draft',
       enabled: true,
       connected: true,
       agent,
@@ -160,6 +165,7 @@ describe('mobile structured send actions', () => {
     listener = null
     agent = 'codex'
     hostSupport = null
+    resetMobileNativeChatDraftInputsForTests()
   })
 
   it('selects a native OMP skill and sends the exact token and arguments through RPC', async () => {
@@ -517,6 +523,23 @@ describe('mobile structured send actions', () => {
       })
     }
   )
+
+  it('does not infer omitted captured skills from the live composer draft', async () => {
+    hostSupport = structuredAgentSessionHostSupport([AGENT_SESSION_SEND_SKILLS_RUNTIME_CAPABILITY])
+    sendRequest.mockImplementation(async (method) =>
+      method === 'agentSession.send' ? sendResult('accepted') : ok({ models: [], current: {} })
+    )
+    updateMobileNativeChatDraftInputs('ordinary-draft', () => ({
+      images: [],
+      files: [],
+      skills: [{ name: 'review', path: '/live/SKILL.md' }]
+    }))
+    await mountSession()
+    await act(async () => {
+      await hook!.sendWithOutcome('$review text')
+    })
+    expect(fieldsOf(calls()[0]?.[1]).body).not.toHaveProperty('skills')
+  })
 
   it('sends an attached file as a reference after the text, and only images as image blocks', async () => {
     sendRequest.mockImplementation(async (method) =>

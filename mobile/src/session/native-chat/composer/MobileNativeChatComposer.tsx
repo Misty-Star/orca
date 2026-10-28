@@ -151,7 +151,7 @@ export function MobileNativeChatComposer({
   const menu = useMobileNativeChatComposerMenu({
     value,
     onChangeText: (text) => {
-      if (draftScopeKey) {
+      if (editSession && draftScopeKey) {
         pruneMobileNativeChatDraftSkills(
           draftScopeKey,
           text,

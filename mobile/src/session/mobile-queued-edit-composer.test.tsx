@@ -1,18 +1,12 @@
 import type { NativeChatSkillDiscoverySnapshot } from '../../../src/shared/native-chat/input/native-chat-picker-items'
 import { QueuedMessageUpdateParams } from '../../../src/shared/rpc-contract/structured-agent-session-queued-edit-params'
 import { createElement, type ReactNode } from 'react'
+import { setMobileNativeChatDraftText } from './native-chat/composer/mobile-native-chat-draft-store'
 import {
-  useMobileNativeChatDraft,
-  setMobileNativeChatDraftText
-} from './native-chat/composer/mobile-native-chat-draft-store'
-import {
-  updateMobileNativeChatDraftInputs,
   mobileNativeChatDraftDestination,
   captureMobileNativeChatTextDestination,
   readMobileNativeChatDraftInputs
 } from './native-chat/composer/mobile-native-chat-draft-inputs'
-import { useMobileNativeChatFileAttachments } from './native-chat/composer/use-mobile-native-chat-file-attachments'
-import { useMobileNativeChatImageAttachments } from './native-chat/composer/use-mobile-native-chat-image-attachments'
 import { act } from 'react-test-renderer'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 import type { MobileQueuedEditHostFixtureModule } from '../../../src/shared/mobile-queued-edit-host.test-fixture-contract'
@@ -62,7 +56,7 @@ const hostFixtures = await vi.importActual<MobileQueuedEditHostFixtureModule>(
 )
 
 describe('real phone inline composer from More through picker pruning and host body', () => {
-  const { state, Harness, mount, sendRequest, error, resolved, client } = mobileQueuedEditHarness()
+  const { state, Harness, mount, sendRequest, error, resolved } = mobileQueuedEditHarness()
   const profiles = [
     ['claude', 'model', '/model'],
     ['codex', 'review.v2', '$review.v2'],
@@ -436,164 +430,6 @@ describe('real phone inline composer from More through picker pruning and host b
     },
     15000
   )
-
-  it('keeps the occupied real bottom mounted through transferred picker completion and sends combined text/files/skills/images once', async () => {
-    const { snapshotEvent, ok, fieldsOf } =
-      await import('./use-mobile-structured-agent-session-queued.test-fixture')
-    const message = queuedDraft({
-      messageId: 'pending-files',
-      body: {
-        kind: 'message',
-        role: 'user',
-        blocks: [{ type: 'text', text: '$review intent' }],
-        skills: [{ name: 'review', path: '/edit/SKILL.md' }]
-      }
-    })
-    function Bottom({ session }: { session: NonNullable<typeof state.hook> }) {
-      const text = useMobileNativeChatDraft('original-bottom')
-      const files = useMobileNativeChatFileAttachments({
-        client,
-        sessionId: SESSION_ID,
-        scopeKey: 'original-bottom',
-        enabled: true,
-        showToast: error
-      })
-      const images = useMobileNativeChatImageAttachments({
-        client,
-        agent: 'codex',
-        activeHandleRef: { current: null },
-        deviceTokenRef: { current: null },
-        getActiveWorktreeConnectionId: async () => null,
-        connState: 'connected',
-        scopeKey: 'original-bottom',
-        enabled: true,
-        structuredNativeChat: true,
-        showToast: error,
-        onSendError: error,
-        baseSend: session.sendWithOutcome,
-        readSeededLaunchDraft: () => null,
-        files: files.files,
-        onFilesSent: files.removeFiles
-      })
-      return createElement(MobileNativeChatComposer, {
-        value: text,
-        agent: 'codex',
-        draftScopeKey: 'original-bottom',
-        onChangeText: (text) => setMobileNativeChatDraftText('original-bottom', text),
-        onSend: images.sendNativeChat,
-        sendSurfaceId: 'original-bottom',
-        getSendCompletionGeneration: () => 0,
-        getComposerEditGeneration: () => 0,
-        attachments: images.attachments,
-        structured: {
-          catalog: { reported: [], conversationCommands: [] },
-          onSlashMenuOpen: () => {},
-          files: files.files,
-          onRemoveFile: () => {}
-        }
-      })
-    }
-    const { root } = await rows(message, 'codex', SESSION_ID, { reported: [] }, (hook) =>
-      createElement(Bottom, { session: hook })
-    )
-    act(() => {
-      setMobileNativeChatDraftText('original-bottom', '$prior occupied')
-      updateMobileNativeChatDraftInputs('original-bottom', () => ({
-        images: [{ id: 'prior-image', path: '/prior.png', previewUri: 'file:///prior.png' }],
-        files: [
-          {
-            id: 'prior-file',
-            path: '/prior.txt',
-            name: 'prior.txt',
-            mime: 'text/plain',
-            byteLength: 1
-          }
-        ],
-        skills: [{ name: 'prior', path: '/prior/SKILL.md' }]
-      }))
-      updateMobileNativeChatDraftInputs(state.hook!.queued.editor!.scopeKey, (input) => ({
-        ...input,
-        images: [{ id: 'edit-image', path: '/added.png', previewUri: 'file:///added.png' }]
-      }))
-    })
-    let release = () => {}
-    const held = new Promise<void>((resolve) => {
-      release = resolve
-    })
-    let started = () => {}
-    const start = new Promise<void>((resolve) => {
-      started = resolve
-    })
-    picker.pickFiles.mockImplementation(async function* () {
-      yield { name: 'late.txt', mime: 'text/plain', byteLength: 1, base64: 'YQ==' }
-    })
-    sendRequest.mockImplementation(async (method, params) => {
-      if (method.endsWith('uploadStart')) {
-        started()
-        await held
-        return ok({ uploadId: 'pending-upload' })
-      }
-      if (method.endsWith('uploadCommit')) {
-        return ok({ path: '/late.txt', name: 'late.txt', byteLength: 1 })
-      }
-      if (method.endsWith('uploadChunk')) {
-        return ok(null)
-      }
-      if (method === 'agentSession.send') {
-        return mutationOk({
-          clientMessageId: fieldsOf(fieldsOf(params).envelope).clientOperationId
-        })
-      }
-      return readOrHoldReply(method, params)
-    })
-    const inline = root()
-      .findByType(MobileQueuedMessageComposer)
-      .findByType(MobileNativeChatComposer)
-    await act(async () => {
-      inline.props.structured.onAttachFiles()
-      await start
-    })
-    const beforeBottom = root()
-      .findAllByType(MobileNativeChatComposer)
-      .find((node) => node.props.draftScopeKey === 'original-bottom')!
-    act(() => state.listener?.(snapshotEvent({ queuedMessages: [] })))
-    expect(root().findByType(MobileNativeChatComposer)).toBe(beforeBottom)
-    expect(state.hook!.queued.editor).toBeUndefined()
-    const pressSend = () =>
-      root()
-        .findAll(
-          (node) =>
-            node.props.accessibilityLabel === 'Send message' &&
-            typeof node.props.onPress === 'function'
-        )[0]!
-        .props.onPress()
-    await act(async () => pressSend())
-    expect(sendRequest.mock.calls.some(([method]) => method === 'agentSession.send')).toBe(false)
-    await act(async () => {
-      release()
-      await vi.waitFor(() =>
-        expect(readMobileNativeChatDraftInputs('original-bottom').pending ?? 0).toBe(0)
-      )
-    })
-    await act(async () => pressSend())
-    const requests = sendRequest.mock.calls.filter(([method]) => method === 'agentSession.send')
-    expect(requests).toHaveLength(1)
-    expect(requests[0]![1]).toMatchObject({
-      body: {
-        blocks: [
-          { type: 'text', text: '$prior occupied\n\n$review intent\n@/prior.txt @/late.txt' },
-          { type: 'image-ref', path: '/prior.png' },
-          { type: 'image-ref', path: '/added.png' }
-        ],
-        skills: [
-          { name: 'prior', path: '/prior/SKILL.md' },
-          { name: 'review', path: '/edit/SKILL.md' }
-        ]
-      }
-    })
-    expect(readMobileNativeChatDraftInputs('original-bottom').files).toEqual([])
-    expect(readMobileNativeChatDraftInputs('original-bottom').images).toEqual([])
-  })
 
   it.each(['updated', 'unknown', 'refused', 'unknown-phase'] as const)(
     'real phone Cancel revokes pending/unknown Save before late %s and cannot mutate a new edit',

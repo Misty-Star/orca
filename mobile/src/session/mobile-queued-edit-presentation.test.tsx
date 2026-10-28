@@ -15,15 +15,28 @@ import {
 } from './native-chat/composer/MobileNativeChatComposer'
 import { MobileNativeChatComposerMenu } from './native-chat/composer/MobileNativeChatComposerMenu'
 import { MobileQueuedMessageComposer } from './MobileQueuedMessageComposer'
-import { setMobileNativeChatDraftText } from './native-chat/composer/mobile-native-chat-draft-store'
-import { readMobileNativeChatDraftInputs } from './native-chat/composer/mobile-native-chat-draft-inputs'
+import { useMobileNativeChatDrafts } from './native-chat/composer/use-mobile-native-chat-drafts'
+import { useMobileStructuredNativeChatSendBridge } from './use-mobile-structured-native-chat-send-bridge'
+import { mobileNativeChatScopeKey } from './native-chat/mobile-native-chat-scope-key'
+import { structuredSendResultFixture } from './structured-agent-send-result.test-fixture'
+import { useMobileNativeChatFileAttachments } from './native-chat/composer/use-mobile-native-chat-file-attachments'
+import { useMobileNativeChatImageAttachments } from './native-chat/composer/use-mobile-native-chat-image-attachments'
+import {
+  useMobileNativeChatDraft,
+  setMobileNativeChatDraftText
+} from './native-chat/composer/mobile-native-chat-draft-store'
+import {
+  readMobileNativeChatDraftInputs,
+  updateMobileNativeChatDraftInputs
+} from './native-chat/composer/mobile-native-chat-draft-inputs'
 import {
   queuedDraft,
   SESSION_ID,
   mutationOk
 } from './use-mobile-structured-agent-session-queued.test-fixture'
 
-vi.mock('../platform/media-picker', () => ({ useMediaPicker: () => ({}) }))
+const picker = vi.hoisted(() => ({ pickFiles: vi.fn(), pickImages: vi.fn() }))
+vi.mock('../platform/media-picker', () => ({ useMediaPicker: () => picker }))
 vi.mock('../components/DragReorderList', () => ({ DragReorderList: 'DragReorderList' }))
 vi.mock('react-native-reanimated', async () => {
   const { useRef } = await import('react')
@@ -40,7 +53,7 @@ vi.mock('../components/bottom-drawer-modal-host-scope', () => ({
 }))
 
 describe('phone inline editor presentation', () => {
-  const { state, Harness, mount, sendRequest, error, resolved } = mobileQueuedEditHarness()
+  const { state, Harness, mount, sendRequest, error, resolved, client } = mobileQueuedEditHarness()
   async function rows(
     message: Parameters<typeof mount>[0],
     agent = 'codex',
@@ -51,7 +64,8 @@ describe('phone inline editor presentation', () => {
     } = {
       reported: []
     },
-    extra?: (hook: NonNullable<typeof state.hook>) => ReactNode
+    extra?: (hook: NonNullable<typeof state.hook>) => ReactNode,
+    composerScopeKey = 'original-bottom'
   ) {
     await mount(message, true, agent, sessionId)
     act(() => state.hook!.queued.editor!.cancel())
@@ -95,7 +109,7 @@ describe('phone inline editor presentation', () => {
             renderContent,
             skillsSupport: true,
             imagesSupport: true,
-            composerScopeKey: 'original-bottom'
+            composerScopeKey
           })
         )
       )
@@ -107,7 +121,9 @@ describe('phone inline editor presentation', () => {
           node.props.accessibilityLabel === label && typeof node.props.onPress === 'function'
       )[0]!
     const field = () =>
-      root().find((node) => node.type === TextInput && node.props.multiline === true)
+      root()
+        .findByType(MobileQueuedMessageComposer)
+        .find((node) => node.type === TextInput && node.props.multiline === true)
     const open = async () => {
       await act(async () => button('More actions').props.onPress())
       const sheet = root().find(
@@ -231,6 +247,209 @@ describe('phone inline editor presentation', () => {
       sendRequest.mock.calls.some(([method]) => method === 'agentSession.queuedMessageUpdate')
     ).toBe(false)
   })
+  it('hands back into the main captured Send path, keeps pending files, and restores a rejected complete draft', async () => {
+    const { snapshotEvent, ok, fieldsOf } =
+      await import('./use-mobile-structured-agent-session-queued.test-fixture')
+    const scope = mobileNativeChatScopeKey('host', 'worktree', 'handoff')!
+    const message = queuedDraft({
+      messageId: 'pending-files',
+      body: {
+        kind: 'message',
+        role: 'user',
+        blocks: [{ type: 'text', text: '$review intent' }],
+        skills: [{ name: 'review', path: '/edit/SKILL.md' }]
+      }
+    })
+    function Bottom({ session }: { session: NonNullable<typeof state.hook> }) {
+      const drafts = useMobileNativeChatDrafts({
+        hostId: 'host',
+        worktreeId: 'worktree',
+        tabId: 'handoff',
+        sessionId: SESSION_ID,
+        messages: [],
+        transcriptSettled: true
+      })
+      const bridge = useMobileStructuredNativeChatSendBridge({
+        ...drafts,
+        agent: 'codex',
+        sendStructured: session.sendWithOutcome,
+        onSendError: error
+      })
+      const text = useMobileNativeChatDraft(scope)
+      const files = useMobileNativeChatFileAttachments({
+        client,
+        sessionId: SESSION_ID,
+        scopeKey: scope,
+        enabled: true,
+        showToast: error
+      })
+      const images = useMobileNativeChatImageAttachments({
+        client,
+        agent: 'codex',
+        activeHandleRef: { current: null },
+        deviceTokenRef: { current: null },
+        getActiveWorktreeConnectionId: async () => null,
+        connState: 'connected',
+        scopeKey: scope,
+        enabled: true,
+        structuredNativeChat: true,
+        showToast: error,
+        onSendError: error,
+        baseSend: bridge.sendWithOutcome,
+        readSeededLaunchDraft: () => null,
+        files: files.files,
+        onFilesSent: files.removeFiles
+      })
+      return createElement(MobileNativeChatComposer, {
+        value: text,
+        agent: 'codex',
+        draftScopeKey: scope,
+        onChangeText: drafts.setComposerText,
+        onSend: images.sendNativeChat,
+        sendSurfaceId: scope,
+        getSendCompletionGeneration: () => 0,
+        getComposerEditGeneration: drafts.getComposerEditGeneration,
+        attachments: images.attachments,
+        structured: {
+          catalog: { reported: [], conversationCommands: [] },
+          onSlashMenuOpen: () => {},
+          files: files.files,
+          onRemoveFile: () => {}
+        }
+      })
+    }
+    const { root, button, field } = await rows(
+      message,
+      'codex',
+      SESSION_ID,
+      { reported: [{ name: 'later', kind: 'skill', path: '/later/SKILL.md' }] },
+      (hook) => createElement(Bottom, { session: hook }),
+      scope
+    )
+    act(() => {
+      field().props.onChangeText('$review intent then $la')
+      field().props.onSelectionChange({ nativeEvent: { selection: { start: 23, end: 23 } } })
+    })
+    await act(async () => button('$later').props.onPress())
+    act(() => {
+      setMobileNativeChatDraftText(scope, '$prior occupied')
+      updateMobileNativeChatDraftInputs(scope, () => ({
+        images: [{ id: 'prior-image', path: '/prior.png', previewUri: 'file:///prior.png' }],
+        files: [
+          {
+            id: 'prior-file',
+            path: '/prior.txt',
+            name: 'prior.txt',
+            mime: 'text/plain',
+            byteLength: 1
+          }
+        ],
+        skills: [{ name: 'prior', path: '/prior/SKILL.md' }]
+      }))
+      updateMobileNativeChatDraftInputs(state.hook!.queued.editor!.scopeKey, (input) => ({
+        ...input,
+        images: [{ id: 'edit-image', path: '/added.png', previewUri: 'file:///added.png' }]
+      }))
+    })
+    let release = () => {}
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    let started = () => {}
+    const start = new Promise<void>((resolve) => {
+      started = resolve
+    })
+    picker.pickFiles.mockImplementation(async function* () {
+      yield { name: 'late.txt', mime: 'text/plain', byteLength: 1, base64: 'YQ==' }
+    })
+    let rejected = false
+    sendRequest.mockImplementation(async (method, params) => {
+      if (method.endsWith('uploadStart')) {
+        started()
+        await held
+        return ok({ uploadId: 'pending-upload' })
+      }
+      if (method.endsWith('uploadCommit')) {
+        return ok({ path: '/late.txt', name: 'late.txt', byteLength: 1 })
+      }
+      if (method.endsWith('uploadChunk')) {
+        return ok(null)
+      }
+      if (method === 'agentSession.send') {
+        if (!rejected) {
+          rejected = true
+          return {
+            id: 'send-refusal',
+            ok: false,
+            error: { code: 'unauthorized', message: 'Send refused before execution' }
+          }
+        }
+        return mutationOk(structuredSendResultFixture('accepted'))
+      }
+      return readOrHoldReply(method, params)
+    })
+    const inline = root()
+      .findByType(MobileQueuedMessageComposer)
+      .findByType(MobileNativeChatComposer)
+    await act(async () => {
+      inline.props.structured.onAttachFiles()
+      await start
+    })
+    const beforeBottom = root()
+      .findAllByType(MobileNativeChatComposer)
+      .find((node) => node.props.draftScopeKey === scope)!
+    act(() => state.listener?.(snapshotEvent({ queuedMessages: [] })))
+    expect(root().findByType(MobileNativeChatComposer)).toBe(beforeBottom)
+    expect(state.hook!.queued.editor).toBeUndefined()
+    const pressSend = () =>
+      root()
+        .findAll(
+          (node) =>
+            node.props.accessibilityLabel === 'Send message' &&
+            typeof node.props.onPress === 'function'
+        )[0]!
+        .props.onPress()
+    await act(async () => pressSend())
+    expect(sendRequest.mock.calls.some(([method]) => method === 'agentSession.send')).toBe(false)
+    await act(async () => {
+      release()
+      await vi.waitFor(() => expect(readMobileNativeChatDraftInputs(scope).pending ?? 0).toBe(0))
+    })
+    await act(async () => pressSend())
+    expect(root().findByType(MobileNativeChatComposer)).toBe(beforeBottom)
+    expect(root().findByType(TextInput).props.value).toBe(
+      '$prior occupied\n\n$review intent then $later '
+    )
+    expect(readMobileNativeChatDraftInputs(scope).skills).toEqual([
+      { name: 'prior', path: '/prior/SKILL.md' },
+      { name: 'review', path: '/edit/SKILL.md' },
+      { name: 'later', path: '/later/SKILL.md' }
+    ])
+    await act(async () => pressSend())
+    const requests = sendRequest.mock.calls.filter(([method]) => method === 'agentSession.send')
+    expect(requests).toHaveLength(2)
+    expect(requests[1]![1]).toMatchObject({ body: fieldsOf(requests[0]![1]).body })
+    expect(requests[0]![1]).toMatchObject({
+      body: {
+        blocks: [
+          {
+            type: 'text',
+            text: '$prior occupied\n\n$review intent then $later\n@/prior.txt @/late.txt'
+          },
+          { type: 'image-ref', path: '/prior.png' },
+          { type: 'image-ref', path: '/added.png' }
+        ],
+        skills: [
+          { name: 'prior', path: '/prior/SKILL.md' },
+          { name: 'review', path: '/edit/SKILL.md' },
+          { name: 'later', path: '/later/SKILL.md' }
+        ]
+      }
+    })
+    expect(readMobileNativeChatDraftInputs(scope).files).toEqual([])
+    expect(readMobileNativeChatDraftInputs(scope).images).toEqual([])
+  })
+
   it('refuses a stale control pick but saves a typed namesake literally when its menu is closed', async () => {
     const message = queuedDraft({ messageId: 'namesake' })
     const { root, button, field } = await rows(message, 'claude', SESSION_ID, {

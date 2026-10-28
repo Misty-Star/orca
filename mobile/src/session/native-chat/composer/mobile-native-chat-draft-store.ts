@@ -79,7 +79,7 @@ function writeDraft(draftKey: string, update: SetStateAction<string>, userEdit: 
   }
   // Send clears and restores are not edits, so a rejected draft keeps its picks.
   if (userEdit) {
-    pruneMobileNativeChatDraftSkills(draftKey, next, ['$', '/'])
+    pruneMobileNativeChatDraftSkills(draftKey, next)
   }
   const skillOrigin =
     userEdit && current?.skillOrigin !== next.split(/\s/, 1)[0] ? undefined : current?.skillOrigin
@@ -118,7 +118,6 @@ export function clearMobileNativeChatDraftForSend(
 ): void {
   const current = drafts.get(draftKey)
   if ((current?.editGeneration ?? 0) === editGeneration && (current?.text ?? '') === text) {
-    pruneMobileNativeChatDraftSkills(draftKey, '')
     setMobileNativeChatDraftText(draftKey, '')
   }
 }

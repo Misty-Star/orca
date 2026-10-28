@@ -1,7 +1,6 @@
 import { useMobileNativeChatImageAttachments } from './use-mobile-native-chat-image-attachments'
 import {
   setMobileNativeChatDraftText,
-  clearMobileNativeChatDraftForSend,
   readMobileNativeChatDraftEditGeneration
 } from './mobile-native-chat-draft-store'
 import {
@@ -9,6 +8,9 @@ import {
   updateMobileNativeChatDraftInputs,
   resetMobileNativeChatDraftInputsForTests
 } from './mobile-native-chat-draft-inputs'
+import { useMobileNativeChatDrafts } from './use-mobile-native-chat-drafts'
+import { useMobileStructuredNativeChatSendBridge } from '../../use-mobile-structured-native-chat-send-bridge'
+import { mobileNativeChatScopeKey } from '../mobile-native-chat-scope-key'
 import { useMobileStructuredAgentSession } from '../../use-mobile-structured-agent-session'
 import {
   CAPABLE,
@@ -218,9 +220,9 @@ describe('MobileNativeChatComposer on a structured chat', () => {
     ['codex', '$review.v2'],
     ['claude', '/review.v2']
   ] as const)(
-    '%s carries an ordinary menu pick through the real Send RPC, clears on acceptance and forgets deleted identities',
+    '%s matches main capture/clear and real Send refs, and forgets a deleted pick',
     async (agent, token) => {
-      const scope = 'normal-menu-rpc'
+      const scope = mobileNativeChatScopeKey('host', 'worktree', 'menu')!
       resetMobileNativeChatDraftInputsForTests()
       setMobileNativeChatDraftText(scope, '/re')
       let publish: ((data: unknown) => void) | undefined
@@ -255,24 +257,26 @@ describe('MobileNativeChatComposer on a structured chat', () => {
           composerScopeKey: scope,
           onSendError: vi.fn()
         })
+        const drafts = useMobileNativeChatDrafts({
+          hostId: 'host',
+          worktreeId: 'worktree',
+          tabId: 'menu',
+          sessionId: SESSION_ID,
+          messages: [],
+          transcriptSettled: true
+        })
+        const bridge = useMobileStructuredNativeChatSendBridge({
+          ...drafts,
+          agent,
+          sendStructured: session.sendWithOutcome,
+          onSendError: vi.fn()
+        })
         return createElement(MobileNativeChatDraftComposer, {
           draftKey: scope,
           agent,
           draftScopeKey: scope,
-          onChangeText: (text) => setMobileNativeChatDraftText(scope, text),
-          onPickSkill: (skill) =>
-            updateMobileNativeChatDraftInputs(scope, (input) => ({
-              ...input,
-              skills: [...input.skills, skill]
-            })),
-          onSend: async (text) => {
-            const generation = readMobileNativeChatDraftEditGeneration(scope)
-            const accepted = (await session.sendWithOutcome(text)) === 'accepted'
-            if (accepted) {
-              clearMobileNativeChatDraftForSend(scope, generation, text)
-            }
-            return accepted
-          },
+          onChangeText: drafts.setComposerText,
+          onSend: bridge.send,
           sendSurfaceId: scope,
           getSendCompletionGeneration: () => 0,
           getComposerEditGeneration: () => readMobileNativeChatDraftEditGeneration(scope),
@@ -293,19 +297,25 @@ describe('MobileNativeChatComposer on a structured chat', () => {
       expect(field().props.value).toBe(`${token} `)
       await act(async () => labelled('Send message')[0]!.props.onPress())
       const request = sendRequest.mock.calls.find(([method]) => method === 'agentSession.send')?.[1]
-      expect(request).toMatchObject({
-        body: {
-          blocks: [{ type: 'text', text: token }],
-          skills: [{ name: 'review.v2', path: '/remote/review/SKILL.md' }]
-        }
-      })
+      const skills = [{ name: 'review.v2', path: '/remote/review/SKILL.md' }]
+      expect(request).toMatchObject({ body: { blocks: [{ type: 'text', text: token }] } })
+      if (agent === 'codex') {
+        expect(request).toHaveProperty('body.skills', skills)
+      } else {
+        expect(request).not.toHaveProperty('body.skills')
+      }
       expect(field().props.value).toBe('')
-      expect(readMobileNativeChatDraftInputs(scope).skills).toEqual([])
+      expect(readMobileNativeChatDraftInputs(scope).skills).toEqual(skills)
       act(() => field().props.onChangeText(`${token} `))
       await act(async () => labelled('Send message')[0]!.props.onPress())
-      expect(
-        sendRequest.mock.calls.findLast(([method]) => method === 'agentSession.send')?.[1]
-      ).not.toHaveProperty('body.skills')
+      const second = sendRequest.mock.calls.findLast(
+        ([method]) => method === 'agentSession.send'
+      )?.[1]
+      if (agent === 'codex') {
+        expect(second).toHaveProperty('body.skills', skills)
+      } else {
+        expect(second).not.toHaveProperty('body.skills')
+      }
       // Pick again, delete, then retype: text alone cannot resurrect the old remote identity.
       act(() => field().props.onChangeText('/re'))
       act(() => field().props.onSelectionChange({ nativeEvent: { selection: { end: 3 } } }))
@@ -313,6 +323,10 @@ describe('MobileNativeChatComposer on a structured chat', () => {
       act(() => field().props.onChangeText(''))
       act(() => field().props.onChangeText(`${token} `))
       expect(readMobileNativeChatDraftInputs(scope).skills).toEqual([])
+      await act(async () => labelled('Send message')[0]!.props.onPress())
+      expect(
+        sendRequest.mock.calls.findLast(([method]) => method === 'agentSession.send')?.[1]
+      ).not.toHaveProperty('body.skills')
     }
   )
 
@@ -379,7 +393,7 @@ describe('MobileNativeChatComposer on a structured chat', () => {
     await act(async () => labelled('Send message')[0]!.props.onPress())
     expect(onSend).toHaveBeenCalledExactlyOnceWith('')
   })
-  it('forgets picked skill identity after its token is removed and retyped', async () => {
+  it('forgets inline picked skill identity after its token is removed and retyped', async () => {
     const scope = 'removed-skill'
     updateMobileNativeChatDraftInputs(scope, () => ({
       images: [],
@@ -391,6 +405,7 @@ describe('MobileNativeChatComposer on a structured chat', () => {
         createElement(MobileNativeChatComposer, {
           draftScopeKey: scope,
           value: '$review draft',
+          editSession: { cancel: vi.fn(), locked: false, refuseCommand: () => false },
           onChangeText: vi.fn(),
           onSend: async () => false,
           sendSurfaceId: scope,
