@@ -54,6 +54,9 @@ vi.mock('../components/bottom-drawer-modal-host-scope', () => ({
 const hostFixtures = await vi.importActual<MobileQueuedEditHostFixtureModule>(
   '../../../src/main/native-chat/agent-session-wire/mobile-queued-edit-host.test-fixture'
 )
+const { AcpStructuredOptions } = await vi.importActual<
+  typeof import('../../../src/main/acp/acp-structured-options')
+>('../../../src/main/acp/acp-structured-options')
 
 describe('real phone inline composer from More through picker pruning and host body', () => {
   const { state, Harness, mount, sendRequest, error, resolved } = mobileQueuedEditHarness()
@@ -175,9 +178,6 @@ describe('real phone inline composer from More through picker pruning and host b
       let unknown = agent === 'claude'
       let desired = message.body
       const scanned = agent === 'opencode' || agent === 'opencode2'
-      const { AcpStructuredOptions } = await vi.importActual<
-        typeof import('../../../src/main/acp/acp-structured-options')
-      >('../../../src/main/acp/acp-structured-options')
       const options = new AcpStructuredOptions()
       options.adoptCommands([{ name, description: 'Review the prompt' }])
       const catalog: NonNullable<Parameters<typeof rows>[3]> = {

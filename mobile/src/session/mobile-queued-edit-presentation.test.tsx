@@ -52,6 +52,13 @@ vi.mock('../components/bottom-drawer-modal-host-scope', () => ({
   useBottomDrawerModalHost: () => null
 }))
 
+const { queuedEditHost } = await vi.importActual<QueuedEditHostFixtureModule>(
+  '../../../src/main/native-chat/agent-session-journal/queued-edit-host.test-fixture'
+)
+const { AcpStructuredOptions } = await vi.importActual<
+  typeof import('../../../src/main/acp/acp-structured-options')
+>('../../../src/main/acp/acp-structured-options')
+
 describe('phone inline editor presentation', () => {
   const { state, Harness, mount, sendRequest, error, resolved, client } = mobileQueuedEditHarness()
   async function rows(
@@ -506,12 +513,6 @@ describe('phone inline editor presentation', () => {
     expect(state.bottomText).toBe('')
   })
   it('saves a scanned model skill picked through More and Edit without dispatching a host command', async () => {
-    const { queuedEditHost } = await vi.importActual<QueuedEditHostFixtureModule>(
-      '../../../src/main/native-chat/agent-session-journal/queued-edit-host.test-fixture'
-    )
-    const { AcpStructuredOptions } = await vi.importActual<
-      typeof import('../../../src/main/acp/acp-structured-options')
-    >('../../../src/main/acp/acp-structured-options')
     const options = new AcpStructuredOptions()
     options.adoptCommands([{ name: 'model', description: 'Choose the model' }])
     const reported = options.readCommands() ?? []
