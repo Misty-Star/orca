@@ -272,7 +272,7 @@ export class IosEmulatorBackend implements EmulatorBackend {
     try {
       const helpers = await listServeSimHelperProcessesForDevice(info.deviceUdid, {
         helperPid: info.helperPid,
-        includeOrphaned: true
+        includeOrphaned: info.helperPid === undefined
       })
       return helpers.length > 0
     } catch {
