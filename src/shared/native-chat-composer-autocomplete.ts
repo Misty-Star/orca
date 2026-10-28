@@ -105,7 +105,11 @@ export function deriveComposerAutocomplete(
   }
   // Mid-prompt slash tokens use the command menu without dispatch; dollar tokens open the agent’s skills-only menu.
   const sigilQuery = profile?.skillPrefix === '$' ? matchSkillSigil(before) : null
-  const query = sigilQuery ?? (profile ? before.match(MID_PROMPT_SLASH_TRIGGER)?.[1] : undefined)
+  const query =
+    sigilQuery ??
+    (profile || (sessionSkills?.length ?? 0) > 0
+      ? before.match(MID_PROMPT_SLASH_TRIGGER)?.[1]
+      : undefined)
   if (query === undefined) {
     return { mode: 'none' }
   }
@@ -138,14 +142,14 @@ function deriveSlashAutocomplete(
   if (dismissedTriggerKey === triggerKey) {
     return { mode: 'none' }
   }
-  // Known agent grammar enables skills; the caller owns catalog policy, while this layer formats tokens.
-  const skillsEnabled = profile !== null
+  // Native reports establish availability independently of optional disk scanning.
+  const skillsEnabled = profile !== null || (sessionSkills?.length ?? 0) > 0
   const items = buildNativeChatPickerItems(
     agentCommands,
     nativeChatPickerScannedSkills(profile, discovery.skills),
     query,
     profile?.skillPrefix ?? '/',
-    skillsEnabled ? sessionSkills : [],
+    sessionSkills,
     undefined,
     prefix,
     commandAvailable
@@ -161,12 +165,12 @@ function deriveSlashAutocomplete(
     skillsEnabled,
     items,
     skillStatus:
-      skillsEnabled && sessionSkills === undefined
+      profile !== null && sessionSkills === undefined
         ? discovery.status === 'idle'
           ? 'loading'
           : discovery.status
         : 'ready',
-    ...(skillsEnabled && sessionSkills === undefined && discovery.errorKind
+    ...(profile !== null && sessionSkills === undefined && discovery.errorKind
       ? { skillErrorKind: discovery.errorKind }
       : {})
   }

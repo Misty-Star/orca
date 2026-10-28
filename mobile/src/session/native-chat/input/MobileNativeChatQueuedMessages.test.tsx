@@ -10,6 +10,7 @@ import type { MobileQueuedMessageInlineEditor } from '../../mobile-queued-messag
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ActionSheetAction } from '../../../components/ActionSheetModal'
+import { colors } from '../../../theme/mobile-theme'
 import { MobileNativeChatQueuedMessages } from './MobileNativeChatQueuedMessages'
 import { useMobileQueuedMessageComposerActions } from '../../use-mobile-queued-message-composer-actions'
 import type { MobileStructuredAgentMutate } from '../../use-mobile-structured-agent-mutation'
@@ -277,7 +278,7 @@ describe('MobileNativeChatQueuedMessages', () => {
         node.props.children === 'Waiting — a message ahead needs attention'
     )
     expect(caption.props.numberOfLines).toBe(1)
-    expect(flatStyle(caption.props.style).color).not.toBe('#ef4444')
+    expect(flatStyle(caption.props.style).color).not.toBe(colors.statusRed)
   })
 
   it("lets a returned card's reason wrap whole, in the destructive color, beside an alert", async () => {
@@ -294,7 +295,7 @@ describe('MobileNativeChatQueuedMessages', () => {
       (node) => String(node.type) === 'Text' && node.props.children === reason
     )
     expect(caption.props.numberOfLines).toBeUndefined()
-    expect(flatStyle(caption.props.style).color).toBe('#ef4444')
+    expect(flatStyle(caption.props.style).color).toBe(colors.statusRed)
     const [returnedRow, waitingRow] = mounted.root.findAllByProps({ testID: 'queued-card-row' })
     expect(nodeTypes(returnedRow!)).toContain('AlertCircle')
     expect(caption.parent?.parent).toBe(returnedRow)
@@ -307,7 +308,7 @@ describe('MobileNativeChatQueuedMessages', () => {
     const headerCaption = mounted.root
       .findByProps({ testID: 'queued-header' })
       .find((node) => String(node.type) === 'Text' && node.props.children === `· ${reason}`)
-    expect(flatStyle(headerCaption.props.style).color).toBe('#ef4444')
+    expect(flatStyle(headerCaption.props.style).color).toBe(colors.statusRed)
     await act(async () => toggle().props.onPress())
     expect(texts(mounted).filter((text) => text === reason)).toHaveLength(1)
   })

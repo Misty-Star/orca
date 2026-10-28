@@ -14,6 +14,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { ActivityIndicator, Keyboard, Pressable, type TextInput, Text, View } from 'react-native'
 import { ArrowUp, Mic, Plus, Square } from 'lucide-react-native'
 import { colors } from '../../../theme/mobile-theme'
+import { useMobileColorScheme } from '../../../theme/use-mobile-color-scheme'
 import { NATIVE_CHAT_COMPOSER_PLACEHOLDER } from '../../../../../src/shared/native-chat-turn-status'
 import { MobileNativeChatComposerMenu } from './MobileNativeChatComposerMenu'
 import { MobileNativeChatComposerField } from './MobileNativeChatComposerField'
@@ -134,6 +135,7 @@ export function MobileNativeChatComposer({
           ))
     )
   }, [draftScopeKey, insertDictation])
+  useMobileColorScheme()
   const fallbackInputRef = useRef<TextInput>(null)
   const fieldRef = inputRef ?? fallbackInputRef
   const [focused, setFocused] = useState(false)

@@ -11,6 +11,7 @@ import {
 } from './native-chat/composer/mobile-native-chat-draft-inputs'
 import { prepareQueuedMessageEditText } from '../../../src/shared/queued-message-edit-command'
 import { colors } from '../theme/mobile-theme'
+import { useMobileColorScheme } from '../theme/use-mobile-color-scheme'
 import { createUuidV4 } from '../../../src/shared/uuid-v4'
 
 export function MobileQueuedMessageComposer({
@@ -20,6 +21,7 @@ export function MobileQueuedMessageComposer({
   editor: MobileQueuedMessageInlineEditor
   attribution: string | null
 }): React.JSX.Element {
+  useMobileColorScheme()
   const context = useContext(MobileQueuedMessageComposerContext)
   const inputRef = useRef<TextInput>(null)
   const emptyHandle = useRef<string | null>(null)

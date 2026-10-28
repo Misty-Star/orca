@@ -2,6 +2,8 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { FileText, Package, Terminal } from 'lucide-react-native'
 import type { NativeChatPickerItem } from '../../../../../src/shared/native-chat/input/native-chat-picker-items'
 import { colors, spacing, typography } from '../../../theme/mobile-theme'
+import { themedStyleSheet } from '../../../theme/themed-styles'
+import { useMobileColorScheme } from '../../../theme/use-mobile-color-scheme'
 
 export type ComposerMenuRow = NativeChatPickerItem | { kind: 'file'; id: string; path: string }
 
@@ -16,6 +18,7 @@ export function MobileNativeChatComposerMenu({
   onPick: (row: ComposerMenuRow) => void
   nestedScrollEnabled?: boolean
 }): React.JSX.Element {
+  useMobileColorScheme()
   return (
     <View style={styles.card}>
       <ScrollView
@@ -43,6 +46,7 @@ function MenuRow({
   row: ComposerMenuRow
   onPick: (row: ComposerMenuRow) => void
 }): React.JSX.Element {
+  useMobileColorScheme()
   const Icon = row.kind === 'skill' ? Package : row.kind === 'command' ? Terminal : FileText
   const description = row.kind === 'file' ? null : row.description
   return (
@@ -83,7 +87,7 @@ function MenuRow({
   )
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyleSheet(() => ({
   card: {
     marginHorizontal: 10,
     marginBottom: spacing.sm,
@@ -147,4 +151,4 @@ const styles = StyleSheet.create({
     fontSize: 12.5,
     lineHeight: 17
   }
-})
+}))

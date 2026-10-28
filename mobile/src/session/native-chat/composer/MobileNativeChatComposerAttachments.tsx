@@ -10,6 +10,8 @@ import {
 } from 'react-native'
 import { FileText, Image as ImageIcon, X } from 'lucide-react-native'
 import { colors, radii, spacing } from '../../../theme/mobile-theme'
+import { themedStyleSheet } from '../../../theme/themed-styles'
+import { useMobileColorScheme } from '../../../theme/use-mobile-color-scheme'
 import { formatPreviewByteLength } from '../../../files/mobile-file-preview-response'
 import type { PendingNativeChatImage } from './mobile-native-chat-image-attachment'
 import type { PendingNativeChatFile } from './mobile-native-chat-file-attachment'
@@ -34,6 +36,7 @@ export function MobileNativeChatComposerAttachments({
   onRemoveImage?: (id: string) => void
   onRemoveFile?: (id: string) => void
 }): React.JSX.Element | null {
+  useMobileColorScheme()
   if (images.length === 0 && files.length === 0) {
     return null
   }
@@ -82,7 +85,7 @@ export function MobileNativeChatComposerAttachments({
           </View>
           {file.path === null ? (
             <View style={styles.uploading} accessibilityLabel={`Uploading ${file.name}`}>
-              <ActivityIndicator size="small" color={colors.textPrimary} />
+              <ActivityIndicator size="small" color={colors.onAccent} />
             </View>
           ) : null}
           {onRemoveFile ? (
@@ -95,6 +98,7 @@ export function MobileNativeChatComposerAttachments({
 }
 
 function RemoveBadge({ label, onPress }: { label: string; onPress: () => void }) {
+  useMobileColorScheme()
   return (
     <Pressable accessibilityLabel={label} style={styles.remove} onPress={onPress} hitSlop={8}>
       <X size={11} color={colors.textPrimary} strokeWidth={3} />
@@ -102,7 +106,7 @@ function RemoveBadge({ label, onPress }: { label: string; onPress: () => void })
   )
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyleSheet(() => ({
   strip: {
     flexGrow: 0,
     marginBottom: 10
@@ -180,4 +184,4 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: colors.composerSurface
   }
-})
+}))
