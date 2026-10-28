@@ -1,7 +1,4 @@
-import {
-  readNativeChatComposerDraft,
-  captureNativeChatEditDraftDestination
-} from './native-chat-composer-draft-store'
+import { captureNativeChatEditDraftDestination } from './native-chat-composer-draft-store'
 import { useNativeChatPickerCommandDispatch } from './use-native-chat-picker-command-dispatch'
 import { useCallback, useLayoutEffect, useMemo, type RefObject } from 'react'
 import type { AgentType } from '../../../../shared/agent-status-types'
@@ -23,14 +20,12 @@ export function useNativeChatComposerEditSession({
   handle,
   draftScopeKey,
   agent,
-  isPickedSkill,
   structuredTransport,
   sendStructured,
   ptyCommandRouting,
   setNotice,
   disabled,
   sendHeld,
-  draft,
   sendMessage,
   completeItem
 }: {
@@ -39,14 +34,12 @@ export function useNativeChatComposerEditSession({
   handle: RefObject<NativeChatComposerHandle | null>
   draftScopeKey: string
   agent: AgentType
-  isPickedSkill: (text: string) => boolean
   structuredTransport: NativeChatStructuredComposerTransport | undefined
   sendStructured: (text: string) => void
   ptyCommandRouting: Parameters<typeof useNativeChatPickerCommandDispatch>[0]
   setNotice: (text: string) => void
   disabled: boolean
   sendHeld: boolean
-  draft: string
   sendMessage: () => void
   completeItem: (item: NativeChatPickerItem) => void
 }) {
@@ -79,24 +72,8 @@ export function useNativeChatComposerEditSession({
   }, [draftScopeKey, root, handle])
 
   const refuseEditCommand = useCallback(
-    (text: string, allowPickedSkill = true): boolean => {
-      const first =
-        editSession && allowPickedSkill
-          ? readNativeChatComposerDraft(draftScopeKey).document?.content?.[0]?.content?.[0]
-          : undefined
-      const seededSkill =
-        first?.type === 'nativeChatSkill' &&
-        typeof first.attrs?.path === 'string' &&
-        first.attrs.path.length > 0 &&
-        typeof first.attrs.token === 'string' &&
-        text.startsWith(first.attrs.token) &&
-        (text.length === first.attrs.token.length ||
-          /\s/u.test(text.charAt(first.attrs.token.length)))
-      if (
-        !editSession ||
-        (allowPickedSkill && (isPickedSkill(text) || seededSkill)) ||
-        acceptsText(text)
-      ) {
+    (text: string): boolean => {
+      if (!editSession || acceptsText(text)) {
         return false
       }
       setNotice(
@@ -107,20 +84,20 @@ export function useNativeChatComposerEditSession({
       )
       return true
     },
-    [editSession, isPickedSkill, setNotice, acceptsText, draftScopeKey]
+    [editSession, setNotice, acceptsText]
   )
   const send = useCallback(() => {
     if (!editSession) {
       sendMessage()
       return
     }
-    if (!disabled && !sendHeld && !refuseEditCommand(draft) && editSession.canSave) {
+    if (!disabled && !sendHeld && editSession.canSave) {
       editSession.save()
     }
-  }, [disabled, draft, editSession, refuseEditCommand, sendHeld, sendMessage])
+  }, [disabled, editSession, sendHeld, sendMessage])
   const chooseEditItem = useCallback(
     (item: Parameters<typeof completeItem>[0]) => {
-      if (item.kind === 'command' && refuseEditCommand(`/${item.name}`, false)) {
+      if (item.kind === 'command' && refuseEditCommand(`/${item.name}`)) {
         return
       }
       completeItem(item)

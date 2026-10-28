@@ -32,7 +32,7 @@ describe('queued phone composer action boundary', () => {
     resetMobileNativeChatDraftInputsForTests()
   })
 
-  it('refuses typed and picked executable commands while keeping ordinary Save and skill picks', async () => {
+  it('saves literal text while refusing picked executable controls and retaining skill picks', async () => {
     const save = vi.fn(async () => true)
     const onError = vi.fn()
     const client = new FakeSession('connected')
@@ -76,14 +76,14 @@ describe('queued phone composer action boundary', () => {
     })
     const composer = findByHostType(renderer!.root, 'Composer')
     await act(async () => {
-      expect(await composer.props.onSend('/compact')).toBe(false)
+      expect(await composer.props.onSend('/compact')).toBe(true)
       expect(await composer.props.onSend('/goal research')).toBe(true)
       expect(composer.props.editSession.refuseCommand('/resume')).toBe(true)
     })
-    expect(save).toHaveBeenCalledOnce()
+    expect(save).toHaveBeenCalledTimes(2)
     save.mockClear()
     expect(client.sendRequest).not.toHaveBeenCalled()
-    expect(onError).toHaveBeenCalledTimes(2)
+    expect(onError).toHaveBeenCalledOnce()
     act(() => composer.props.onPickSkill({ name: 'review', path: '/remote/SKILL.md' }))
     expect(readMobileNativeChatDraftInputs('edit').skills).toEqual([
       { name: 'review', path: '/remote/SKILL.md' }

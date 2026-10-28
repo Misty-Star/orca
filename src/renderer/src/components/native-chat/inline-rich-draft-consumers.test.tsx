@@ -491,7 +491,6 @@ function useCapturedPrompt(
     draftScopeKey: key,
     agent: 'codex',
     editSession: editing ? { save: () => {}, cancel: () => {}, canSave: true } : undefined,
-    isPickedSkill: () => false,
     structuredTransport: undefined,
     sendStructured: () => {},
     ptyCommandRouting: {
@@ -511,7 +510,6 @@ function useCapturedPrompt(
     setNotice: () => {},
     disabled: false,
     sendHeld: false,
-    draft: '',
     sendMessage: () => {},
     completeItem: () => {}
   })

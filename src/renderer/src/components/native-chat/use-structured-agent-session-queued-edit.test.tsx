@@ -18,7 +18,12 @@ import {
   write,
   type Outcome
 } from './structured-queued-edit.test-fixture'
-import { act, renderHook, waitFor } from '@testing-library/react'
+import { act, render, renderHook, waitFor, within } from '@testing-library/react'
+import { createRef } from 'react'
+import { NativeChatPromptEditor } from './NativeChatPromptEditor'
+import type { NativeChatComposerInput } from './native-chat-composer-input'
+import { promptEditor } from './native-chat-prompt-editor.test-support'
+import { promptSkillRefs } from './native-chat-prompt-document'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 import { toast } from 'sonner'
 import type { QueuedEditHostFixtureModule } from '../../../../shared/queued-edit-host.test-fixture'
@@ -100,6 +105,86 @@ describe('inline queued editor', () => {
     expect(hook.result.current.editor).toBeUndefined()
     expect(writeSpy).not.toHaveBeenCalled()
   })
+
+  it.each(['/model old', '$review old'])(
+    'stock Undo restores accepted %s and clean Save; a changed pill uses its actual file',
+    async (text) => {
+      const skills = text.startsWith('$')
+        ? [
+            { name: 'review', path: '/A/SKILL.md' },
+            { name: 'review', path: '/B/SKILL.md' }
+          ]
+        : undefined
+      const accepted = {
+        ...message,
+        body: {
+          ...message.body,
+          blocks: [{ type: 'text' as const, text }],
+          ...(skills ? { skills } : {})
+        }
+      }
+      const hook = harness(true, { messages: [accepted], skillsCapable: true })
+      const mount = () => {
+        const edit = hook.result.current.editor!
+        const inputRef = createRef<NativeChatComposerInput>()
+        const view = render(
+          <NativeChatPromptEditor
+            inputRef={inputRef}
+            scopeKey={edit.draftScopeKey}
+            initialValue={edit.text}
+            disabled={false}
+            placeholder="Edit message"
+            onChange={() => {}}
+            onSelect={() => {}}
+          />
+        )
+        return {
+          ...view,
+          input: inputRef.current!,
+          editor: promptEditor(within(view.container).getByRole('textbox'))
+        }
+      }
+      await begin(hook)
+      const field = mount()
+      act(() => {
+        field.input.setSelectionRange(0, text.indexOf(' '))
+        expect(field.editor.commands.deleteSelection()).toBe(true)
+      })
+      expect(field.input.value).toBe(' old')
+      await act(async () => {
+        expect(field.editor.commands.undo()).toBe(true)
+      })
+      expect(field.input.value).toBe(text)
+      expect(promptSkillRefs(field.editor.getJSON())).toEqual(skills?.slice(0, 1) ?? [])
+      act(() => hook.result.current.editor!.save())
+      expect(hook.result.current.editor).toBeUndefined()
+      expect(writeSpy).not.toHaveBeenCalled()
+      field.unmount()
+      if (!skills) {
+        return
+      }
+
+      await begin(hook)
+      const changed = mount()
+      act(() => {
+        changed.input.setSelectionRange(text.length, text.length)
+        changed.input.insertText!(' changed')
+      })
+      act(() => hook.result.current.editor!.save())
+      await waitFor(() => expect(hook.result.current.editor).toBeUndefined())
+      expect(writeSpy).toHaveBeenCalledExactlyOnceWith(
+        'agentSession.queuedMessageUpdate',
+        'agentSession.queuedMessageUpdate',
+        {
+          messageId: 'card',
+          expectedBodyFingerprint: agentSessionSendBodyFingerprint(SESSION, accepted.body),
+          text: '$review old changed',
+          skills: skills.slice(0, 1)
+        }
+      )
+      expect(toast.error).not.toHaveBeenCalled()
+    }
+  )
 
   it('Cancel during a slow acquire closes at once and releases that edit after it lands', async () => {
     let finish: (value: AgentSessionQueuedMessageEditHoldResult) => void = () => {}
@@ -511,7 +596,6 @@ it.each(['updated', 'not-editable', 'clean-gone', 'cancel'] as const)(
         },
         draftScopeKey: editor?.draftScopeKey ?? SCOPE,
         agent: 'codex',
-        isPickedSkill: () => false,
         structuredTransport: undefined,
         sendStructured: () => {},
         ptyCommandRouting: {
@@ -531,7 +615,6 @@ it.each(['updated', 'not-editable', 'clean-gone', 'cancel'] as const)(
         setNotice: () => {},
         disabled: editor?.saving ?? false,
         sendHeld: false,
-        draft: editor?.text ?? '',
         sendMessage: () => {},
         completeItem: () => {}
       })

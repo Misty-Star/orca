@@ -246,7 +246,7 @@ describe('/resume in the native chat composer', () => {
   })
 
   it.each(['/compact', '/goal ship it', '/resume old chat'])(
-    'refuses typed and picked %s at the edit action boundary',
+    'saves literal %s but refuses its picked control without dispatch',
     (text) => {
       mocks.draft = text
       const editor: QueuedMessageInlineEditor = {
@@ -267,7 +267,7 @@ describe('/resume in the native chat composer', () => {
       const item: CommandItem = { ...RESUME, id: `command:${name}`, name, token: `/${name}` }
       act(() => mocks.keyDownArgs?.dispatchPickerCommand(item))
       act(() => mocks.fieldProps?.onChoosePickerItem?.(item))
-      expect(editor.save).not.toHaveBeenCalled()
+      expect(editor.save).toHaveBeenCalledOnce()
       expect(transport.send).not.toHaveBeenCalled()
       expect(transport.threadGoal?.setObjective).not.toHaveBeenCalled()
       expect(transport.dispatchCommand).not.toHaveBeenCalled()

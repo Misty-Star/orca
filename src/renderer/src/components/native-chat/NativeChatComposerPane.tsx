@@ -312,7 +312,6 @@ export const NativeChatComposerPane = forwardRef<NativeChatComposerHandle, Nativ
         agent,
         disabled,
         sendHeld,
-        draft,
         ...picker,
         structuredTransport,
         sendStructured,

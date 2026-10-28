@@ -18,6 +18,7 @@ import {
   ok
 } from '../../use-mobile-structured-agent-session-queued.test-fixture'
 import { structuredSendResultFixture } from '../../structured-agent-send-result.test-fixture'
+import { findByHostType } from '../../../test-support/react-test-renderer-host-nodes'
 import type { RpcClient } from '../../../transport/rpc-client'
 vi.mock('../../../platform/media-picker', () => ({
   useMediaPicker: () => ({ pickImages: async () => [] })

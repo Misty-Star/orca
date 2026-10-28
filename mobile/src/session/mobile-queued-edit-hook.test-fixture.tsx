@@ -180,10 +180,14 @@ export function mobileQueuedEditHarness() {
       filePaths: [],
       focusField: () => {},
       editing: true,
-      onPickSkill: (skill) => {
+      // Mirrors the real composer: the menu hands over its row; the draft keeps name and path.
+      onPickSkill: ({ token, path }) => {
         const key = state.hook?.queued.editor?.scopeKey
-        if (key) {
-          updateMobileNativeChatDraftInputs(key, (before) => ({ ...before, skills: [skill] }))
+        if (key && path) {
+          updateMobileNativeChatDraftInputs(key, (before) => ({
+            ...before,
+            skills: [{ name: token.slice(1), path }]
+          }))
         }
       }
     })

@@ -1,5 +1,3 @@
-import { getNativeChatAgentProfile } from '../../../src/shared/native-chat-agent-profiles'
-import { pickedSkillsInText } from '../../../src/shared/structured-agent-session-send-mutation'
 import { useContext, useEffect, useMemo, useRef } from 'react'
 import { MobileQueuedMessageComposerContext } from './mobile-queued-message-composer-context'
 import { Text, type TextInput, View } from 'react-native'
@@ -56,14 +54,8 @@ export function MobileQueuedMessageComposer({
     () => prepareQueuedMessageEditText(agent, reported),
     [agent, reported]
   )
-  const refuseCommand = (text: string, selectedSkill = false): boolean => {
-    if (
-      (selectedSkill &&
-        pickedSkillsInText(text.split(/\s/u, 1)[0], inputs.skills, [
-          getNativeChatAgentProfile(agent)?.skillPrefix ?? '/'
-        ]).length > 0) ||
-      acceptsText(text)
-    ) {
+  const refuseCommand = (text: string): boolean => {
+    if (acceptsText(text)) {
       return false
     }
     context?.onError("Commands can't be saved in a queued message.")
@@ -81,7 +73,7 @@ export function MobileQueuedMessageComposer({
         agent={context?.agent}
         value={editor.text}
         onChangeText={editor.change}
-        onSend={async (text) => (refuseCommand(text, true) ? false : editor.save())}
+        onSend={() => editor.save()}
         editSession={{ cancel: editor.cancel, locked: editor.saving, refuseCommand }}
         sendSurfaceId={editor.scopeKey}
         getSendCompletionGeneration={() => 0}

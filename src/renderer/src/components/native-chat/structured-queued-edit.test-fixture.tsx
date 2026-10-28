@@ -78,6 +78,7 @@ export type Props = {
   sessionId?: string
   submissions?: AgentJournalSubmission[]
   imagesCapable?: boolean
+  skillsCapable?: boolean
   promptOpen?: boolean
 }
 export function harness(capable = true, initial: Props = { messages: [message] }) {
@@ -90,6 +91,7 @@ export function harness(capable = true, initial: Props = { messages: [message] }
           sessionId: props.sessionId ?? SESSION,
           capable,
           imagesCapable: props.imagesCapable,
+          skillsCapable: props.skillsCapable,
           write
         },
         messages: props.messages,

@@ -22,7 +22,6 @@ import { ActionSheetModal } from '../components/ActionSheetModal'
 import { MobileQueuedMessageComposerContext } from './mobile-queued-message-composer-context'
 import { MobileNativeChatQueuedMessages } from './native-chat/input/MobileNativeChatQueuedMessages'
 import { MobileNativeChatComposer } from './native-chat/composer/MobileNativeChatComposer'
-import { MobileNativeChatComposerMenu } from './native-chat/composer/MobileNativeChatComposerMenu'
 import { MobileQueuedMessageComposer } from './MobileQueuedMessageComposer'
 import type { QueuedEditHostFixtureModule } from '../../../src/shared/queued-edit-host.test-fixture'
 import { queuedMessageWithEdit } from '../../../src/shared/queued-message-edit'
@@ -170,89 +169,8 @@ describe('real phone inline composer from More through picker pruning and host b
     await open()
     return { root, button, field, rerender, open }
   }
-  it('saves a scanned model skill picked through More and Edit without dispatching a host command', async () => {
-    const { AcpStructuredOptions } = await vi.importActual<
-      typeof import('../../../src/main/acp/acp-structured-options')
-    >('../../../src/main/acp/acp-structured-options')
-    const options = new AcpStructuredOptions()
-    options.adoptCommands([{ name: 'model', description: 'Choose the model' }])
-    const reported = options.readCommands() ?? []
-    expect(reported).toEqual([{ name: 'model', kind: 'command', description: 'Choose the model' }])
-    const message = queuedDraft({
-      messageId: 'scanned-model',
-      body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'seed' }] }
-    })
-    const host = queuedEditHost(SESSION_ID, message)
-    try {
-      const { root, button, field } = await rows(message, 'opencode2', SESSION_ID, {
-        reported,
-        discovery: {
-          status: 'ready',
-          skills: [
-            {
-              id: 'repo:model',
-              name: 'model',
-              description: 'Explain the domain model',
-              providers: ['agent-skills'],
-              sourceKind: 'repo',
-              sourceLabel: 'Repo',
-              rootPath: '/workspace/.agents/skills',
-              directoryPath: '/workspace/.agents/skills/model',
-              skillFilePath: '/workspace/.agents/skills/model/SKILL.md',
-              installed: true,
-              updatedAt: null
-            }
-          ]
-        }
-      })
-      sendRequest.mockImplementation(async (method, params) =>
-        method === 'agentSession.queuedMessageUpdate'
-          ? mutationOk(host.update(QueuedMessageUpdateParams.parse(params)))
-          : readOrHoldReply(method, params)
-      )
-      act(() => field().props.onChangeText('/'))
-      act(() =>
-        field().props.onSelectionChange({ nativeEvent: { selection: { start: 1, end: 1 } } })
-      )
-      const menu = root().findByType(MobileNativeChatComposerMenu)
-      expect(menu.props.rows.filter((row: { token?: string }) => row.token === '/model')).toEqual([
-        expect.objectContaining({
-          kind: 'skill',
-          id: 'skill:model',
-          token: '/model',
-          sources: [
-            { sourceKind: 'repo', skillFilePath: '/workspace/.agents/skills/model/SKILL.md' }
-          ]
-        })
-      ])
-      expect(
-        menu.props.rows.find((row: { token?: string }) => row.token === '/model')
-      ).not.toHaveProperty('path')
-      await act(async () => button('/model').props.onPress())
-      expect(state.hook!.queued.editor?.text).toBe('/model ')
-      expect(readMobileNativeChatDraftInputs(state.hook!.queued.editor!.scopeKey).skills).toEqual(
-        []
-      )
-      expect(error.mock.calls).toEqual([])
-      await act(async () => button('Save edited message').props.onPress())
-      expect(
-        sendRequest.mock.calls.some(([method]) =>
-          /(?:\.send$|conversationCommand|goal|resume|pty|setOption)/i.test(method)
-        )
-      ).toBe(false)
-      expect(error.mock.calls).toEqual([])
-      expect(
-        sendRequest.mock.calls.filter(([method]) => method === 'agentSession.queuedMessageUpdate')
-      ).toHaveLength(1)
-      expect(state.hook!.queued.editor).toBeUndefined()
-      expect(host.row!.body.blocks).toEqual([{ type: 'text', text: '/model' }])
-      expect(host.row!.body.skills).toBeUndefined()
-    } finally {
-      host.leases.dispose()
-    }
-  })
   it.each(profiles)(
-    '%s retains selected %s through the actual wrapper and accepted body',
+    '%s preserves its actual offered %s shape through the wrapper and accepted body',
     async (agent, name, token) => {
       const message = queuedDraft({
         messageId: 'picked',
@@ -262,7 +180,37 @@ describe('real phone inline composer from More through picker pruning and host b
       let path = '/A/SKILL.md'
       let unknown = agent === 'claude'
       let desired = message.body
-      const catalog = { reported: [{ name, kind: 'skill' as const, path }] }
+      const scanned = agent === 'opencode' || agent === 'opencode2'
+      const { AcpStructuredOptions } = await vi.importActual<
+        typeof import('../../../src/main/acp/acp-structured-options')
+      >('../../../src/main/acp/acp-structured-options')
+      const options = new AcpStructuredOptions()
+      options.adoptCommands([{ name, description: 'Review the prompt' }])
+      const catalog: NonNullable<Parameters<typeof rows>[3]> = {
+        reported: scanned ? (options.readCommands() ?? []) : [{ name, kind: 'skill', path }],
+        ...(scanned
+          ? {
+              discovery: {
+                status: 'ready',
+                skills: [
+                  {
+                    id: 'repo:review',
+                    name,
+                    description: null,
+                    providers: ['agent-skills'],
+                    sourceKind: 'repo',
+                    sourceLabel: 'Repo',
+                    rootPath: '/skills',
+                    directoryPath: '/skills/review',
+                    skillFilePath: path,
+                    installed: true,
+                    updatedAt: null
+                  }
+                ]
+              }
+            }
+          : {})
+      }
       const { button, field, rerender } = await rows(message, agent, SESSION_ID, catalog)
       sendRequest.mockImplementation(async (method, params) => {
         if (method !== 'agentSession.queuedMessageUpdate') {
@@ -287,7 +235,7 @@ describe('real phone inline composer from More through picker pruning and host b
         await act(async () => button(token).props.onPress())
         expect(state.hook!.queued.editor?.text).toBe(`${token} `)
         expect(readMobileNativeChatDraftInputs(state.hook!.queued.editor!.scopeKey).skills).toEqual(
-          [{ name, path }]
+          scanned ? [] : [{ name, path }]
         )
       }
       await pick()
@@ -322,7 +270,7 @@ describe('real phone inline composer from More through picker pruning and host b
         sendRequest.mock.calls.filter(([method]) => method === 'agentSession.queuedMessageUpdate')
       ).not.toHaveLength(0)
       expect(state.hook!.queued.editor).toBeUndefined()
-      expect(host.row!.body.skills).toEqual([{ name, path }])
+      expect(host.row!.body.skills).toEqual(scanned ? undefined : [{ name, path }])
       expect(
         sendRequest.mock.calls.filter(([method]) => method === 'agentSession.queuedMessageUpdate')
       ).toHaveLength(agent === 'claude' ? 2 : 1)
@@ -334,6 +282,48 @@ describe('real phone inline composer from More through picker pruning and host b
       host.leases.dispose()
     }
   )
+  it('keeps both saved files on clean Save and projects the phone picked list after an argument edit', async () => {
+    const skills = [
+      { name: 'review', path: '/A/SKILL.md' },
+      { name: 'review', path: '/B/SKILL.md' }
+    ]
+    const message = queuedDraft({
+      messageId: 'two-files',
+      body: {
+        kind: 'message',
+        role: 'user',
+        blocks: [{ type: 'text', text: '$review old' }],
+        skills
+      }
+    })
+    const host = queuedEditHost(SESSION_ID, message)
+    try {
+      const { button, field, open } = await rows(message)
+      sendRequest.mockImplementation(async (method, params) =>
+        method === 'agentSession.queuedMessageUpdate'
+          ? mutationOk(host.update(QueuedMessageUpdateParams.parse(params)))
+          : readOrHoldReply(method, params)
+      )
+      await act(async () => button('Save edited message').props.onPress())
+      expect(state.hook!.queued.editor).toBeUndefined()
+      expect(
+        sendRequest.mock.calls.filter(([method]) => method === 'agentSession.queuedMessageUpdate')
+      ).toHaveLength(0)
+      expect(host.row!.body.skills).toEqual(skills)
+      await open()
+      act(() => field().props.onChangeText('$review changed'))
+      await act(async () => button('Save edited message').props.onPress())
+      expect(state.hook!.queued.editor).toBeUndefined()
+      expect(host.row!.body.skills).toEqual(skills)
+      expect(host.row!.body.blocks).toEqual([{ type: 'text', text: '$review changed' }])
+      expect(
+        sendRequest.mock.calls.filter(([method]) => method === 'agentSession.queuedMessageUpdate')
+      ).toHaveLength(1)
+    } finally {
+      host.leases.dispose()
+    }
+  })
+
   it.each(['question', 'approval'] as const)(
     'automatic/mail More→Edit→Save persists user authorship, position and options across journal reopen under %s',
     async (kind) => {

@@ -1,4 +1,7 @@
-import { mobileQueuedEditHarness } from './mobile-queued-edit-hook.test-fixture'
+import type { NativeChatSkillDiscoverySnapshot } from '../../../src/shared/native-chat/input/native-chat-picker-items'
+import type { QueuedEditHostFixtureModule } from '../../../src/shared/queued-edit-host.test-fixture'
+import { QueuedMessageUpdateParams } from '../../../src/shared/rpc-contract/structured-agent-session-queued-edit-params'
+import { mobileQueuedEditHarness, readOrHoldReply } from './mobile-queued-edit-hook.test-fixture'
 import { createElement, type ReactNode } from 'react'
 import { act } from 'react-test-renderer'
 import { describe, expect, it, vi } from 'vitest'
@@ -14,7 +17,11 @@ import { MobileNativeChatComposerMenu } from './native-chat/composer/MobileNativ
 import { MobileQueuedMessageComposer } from './MobileQueuedMessageComposer'
 import { setMobileNativeChatDraftText } from './native-chat/composer/mobile-native-chat-draft-store'
 import { readMobileNativeChatDraftInputs } from './native-chat/composer/mobile-native-chat-draft-inputs'
-import { queuedDraft, SESSION_ID } from './use-mobile-structured-agent-session-queued.test-fixture'
+import {
+  queuedDraft,
+  SESSION_ID,
+  mutationOk
+} from './use-mobile-structured-agent-session-queued.test-fixture'
 
 vi.mock('../platform/media-picker', () => ({ useMediaPicker: () => ({}) }))
 vi.mock('../components/DragReorderList', () => ({ DragReorderList: 'DragReorderList' }))
@@ -38,7 +45,10 @@ describe('phone inline editor presentation', () => {
     message: Parameters<typeof mount>[0],
     agent = 'codex',
     sessionId = SESSION_ID,
-    catalog: { reported: { name: string; kind: 'skill' | 'command'; path?: string }[] } = {
+    catalog: {
+      reported: { name: string; kind: 'skill' | 'command'; path?: string }[]
+      discovery?: NativeChatSkillDiscoverySnapshot
+    } = {
       reported: []
     },
     extra?: (hook: NonNullable<typeof state.hook>) => ReactNode
@@ -58,6 +68,7 @@ describe('phone inline editor presentation', () => {
               files: [],
               onRemoveFile: () => {}
             },
+            skillDiscovery: catalog.discovery,
             filePaths: [],
             onNeedFiles: undefined,
             onError: error,
@@ -220,7 +231,7 @@ describe('phone inline editor presentation', () => {
       sendRequest.mock.calls.some(([method]) => method === 'agentSession.queuedMessageUpdate')
     ).toBe(false)
   })
-  it('retiring a selected namesake refuses typed and stale command activation through the real wrapper', async () => {
+  it('refuses a stale control pick but saves a typed namesake literally when its menu is closed', async () => {
     const message = queuedDraft({ messageId: 'namesake' })
     const { root, button, field } = await rows(message, 'claude', SESSION_ID, {
       reported: [{ name: 'model', kind: 'skill', path: '/A/SKILL.md' }]
@@ -235,16 +246,23 @@ describe('phone inline editor presentation', () => {
     expect(error).toHaveBeenLastCalledWith("Commands can't be saved in a queued message.")
     expect(state.hook!.queued.editor!.text).toBe('/model ')
     act(() => field().props.onChangeText(''))
-    act(() => field().props.onChangeText('/model'))
+    act(() => field().props.onChangeText('/model literal'))
     expect(readMobileNativeChatDraftInputs(key).skills).toEqual([])
+    act(() =>
+      field().props.onSelectionChange({ nativeEvent: { selection: { start: 14, end: 14 } } })
+    )
+    expect(root().findAllByType(MobileNativeChatComposerMenu)).toHaveLength(0)
     await act(async () => button('Save edited message').props.onPress())
-    expect(error).toHaveBeenCalledTimes(2)
+    expect(error).toHaveBeenCalledOnce()
+    expect(
+      sendRequest.mock.calls.filter(([method]) => method === 'agentSession.queuedMessageUpdate')
+    ).toHaveLength(1)
     expect(
       sendRequest.mock.calls.some(([method]) =>
-        /(?:Update|send|conversationCommand|pty)/.test(method)
+        /(?:\.send$|conversationCommand|goal|resume|pty)/i.test(method)
       )
     ).toBe(false)
-    expect(state.hook!.queued.editor).toBeDefined()
+    expect(state.hook!.queued.editor).toBeUndefined()
   })
 
   it('an image-only attributed card reaches the actual inline composer and no-op Save retains its image and sender', async () => {
@@ -267,5 +285,89 @@ describe('phone inline editor presentation', () => {
     expect(state.hook!.queued.cards[0]?.images).toEqual(message.body.blocks)
     expect(state.hook!.queued.cards[0]?.attribution).not.toBeNull()
     expect(state.bottomText).toBe('')
+  })
+  it('saves a scanned model skill picked through More and Edit without dispatching a host command', async () => {
+    const { queuedEditHost } = await vi.importActual<QueuedEditHostFixtureModule>(
+      '../../../src/main/native-chat/agent-session-journal/queued-edit-host.test-fixture'
+    )
+    const { AcpStructuredOptions } = await vi.importActual<
+      typeof import('../../../src/main/acp/acp-structured-options')
+    >('../../../src/main/acp/acp-structured-options')
+    const options = new AcpStructuredOptions()
+    options.adoptCommands([{ name: 'model', description: 'Choose the model' }])
+    const reported = options.readCommands() ?? []
+    expect(reported).toEqual([{ name: 'model', kind: 'command', description: 'Choose the model' }])
+    const message = queuedDraft({
+      messageId: 'scanned-model',
+      body: { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'seed' }] }
+    })
+    const host = queuedEditHost(SESSION_ID, message)
+    try {
+      const { root, button, field } = await rows(message, 'opencode2', SESSION_ID, {
+        reported,
+        discovery: {
+          status: 'ready',
+          skills: [
+            {
+              id: 'repo:model',
+              name: 'model',
+              description: 'Explain the domain model',
+              providers: ['agent-skills'],
+              sourceKind: 'repo',
+              sourceLabel: 'Repo',
+              rootPath: '/workspace/.agents/skills',
+              directoryPath: '/workspace/.agents/skills/model',
+              skillFilePath: '/workspace/.agents/skills/model/SKILL.md',
+              installed: true,
+              updatedAt: null
+            }
+          ]
+        }
+      })
+      sendRequest.mockImplementation(async (method, params) =>
+        method === 'agentSession.queuedMessageUpdate'
+          ? mutationOk(host.update(QueuedMessageUpdateParams.parse(params)))
+          : readOrHoldReply(method, params)
+      )
+      act(() => field().props.onChangeText('/'))
+      act(() =>
+        field().props.onSelectionChange({ nativeEvent: { selection: { start: 1, end: 1 } } })
+      )
+      const menu = root().findByType(MobileNativeChatComposerMenu)
+      expect(menu.props.rows.filter((row: { token?: string }) => row.token === '/model')).toEqual([
+        expect.objectContaining({
+          kind: 'skill',
+          id: 'skill:model',
+          token: '/model',
+          sources: [
+            { sourceKind: 'repo', skillFilePath: '/workspace/.agents/skills/model/SKILL.md' }
+          ]
+        })
+      ])
+      expect(
+        menu.props.rows.find((row: { token?: string }) => row.token === '/model')
+      ).not.toHaveProperty('path')
+      await act(async () => button('/model').props.onPress())
+      expect(state.hook!.queued.editor?.text).toBe('/model ')
+      expect(readMobileNativeChatDraftInputs(state.hook!.queued.editor!.scopeKey).skills).toEqual(
+        []
+      )
+      expect(error.mock.calls).toEqual([])
+      await act(async () => button('Save edited message').props.onPress())
+      expect(
+        sendRequest.mock.calls.some(([method]) =>
+          /(?:\.send$|conversationCommand|goal|resume|pty|setOption)/i.test(method)
+        )
+      ).toBe(false)
+      expect(error.mock.calls).toEqual([])
+      expect(
+        sendRequest.mock.calls.filter(([method]) => method === 'agentSession.queuedMessageUpdate')
+      ).toHaveLength(1)
+      expect(state.hook!.queued.editor).toBeUndefined()
+      expect(host.row!.body.blocks).toEqual([{ type: 'text', text: '/model' }])
+      expect(host.row!.body.skills).toBeUndefined()
+    } finally {
+      host.leases.dispose()
+    }
   })
 })
