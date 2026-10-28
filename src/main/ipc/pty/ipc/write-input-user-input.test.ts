@@ -56,7 +56,11 @@ describe('renderer PTY writes: input kind', () => {
     '%s forwards desktop provenance to shared admission',
     async (writer) => {
       const policy = vi.spyOn(inputAdmission, 'isTerminalInputPaused')
-      await createWriteInput(new TerminalRunFactsRegister())[writer]({ id: PTY_ID, data: 'keys' })
+      await createWriteInput(new TerminalRunFactsRegister())[writer]({
+        id: PTY_ID,
+        data: 'keys',
+        inputKind: 'driving'
+      })
       expect(policy).toHaveBeenCalledWith(expect.anything(), PTY_ID, 'desktop')
     }
   )
