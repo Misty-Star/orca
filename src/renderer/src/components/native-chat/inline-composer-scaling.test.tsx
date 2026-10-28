@@ -8,7 +8,11 @@ import {
 } from './native-chat-queued-edit-draft'
 import {
   updateNativeChatComposerDraft,
-  clearNativeChatComposerDraftsForTests
+  clearNativeChatComposerDraftsForTests,
+  openNativeChatEditDraft,
+  appendToNativeChatComposerDraft,
+  subscribeToNativeChatComposerDraft,
+  subscribeToNativeChatComposerDraftAppend
 } from './native-chat-composer-draft-store'
 import {
   nativeChatPastedTextOperations,
@@ -22,7 +26,9 @@ import {
   clearNativeChatPendingAttachmentsForTests,
   moveNativeChatPendingAttachments,
   settleNativeChatPendingAttachment,
-  clearNativeChatPendingAttachments
+  clearNativeChatPendingAttachments,
+  useNativeChatPendingAttachments,
+  subscribeToNativeChatPendingAttachments
 } from './native-chat-pending-attachment-cache'
 import {
   registerNativeChatComposerDestination,
@@ -35,6 +41,7 @@ import {
 } from '../dictation/dictation-insertion-target'
 import { NativeChatMentionMenu } from './NativeChatAutocompleteMenus'
 import type { NativeChatComposerHandle } from './native-chat-composer-types'
+import { useNativeChatDraft } from './use-native-chat-draft'
 
 afterEach(() => {
   cleanup()
@@ -42,6 +49,96 @@ afterEach(() => {
   clearNativeChatPendingAttachmentsForTests()
   clearNativeChatComposerDraftsForTests()
 })
+
+it.each([20, 200])(
+  'isolates mounted draft, pending and composing append consumers across %i scopes',
+  async (count) => {
+    const scopes = [
+      'queued-edit:own-host:target',
+      ...Array.from({ length: count }, (_, i) => `queued-edit:other-host:${i}`)
+    ]
+    const own = scopes[0]
+    const textRenders = new Map<string, number>()
+    const pendingRenders = new Map<string, number>()
+    const drafts = new Map<string, ReturnType<typeof useNativeChatDraft>>()
+    let composing = false
+    const isComposing = () => composing
+    const upstream = scopes.map(() => ({ draft: vi.fn(), pending: vi.fn(), append: vi.fn() }))
+    const releases = scopes.flatMap((scope, index) => {
+      openNativeChatEditDraft(scope, { text: 'seed', images: [] })
+      return [
+        subscribeToNativeChatComposerDraft(scope, upstream[index].draft),
+        subscribeToNativeChatPendingAttachments(scope, upstream[index].pending),
+        subscribeToNativeChatComposerDraftAppend(scope, upstream[index].append)
+      ]
+    })
+    function TextConsumer({ scope }: { scope: string }) {
+      const draft = useNativeChatDraft(scope, isComposing)
+      drafts.set(scope, draft)
+      textRenders.set(scope, (textRenders.get(scope) ?? 0) + 1)
+      return <span>{draft.draft}</span>
+    }
+    function PendingConsumer({ scope }: { scope: string }) {
+      const chips = useNativeChatPendingAttachments(scope)
+      pendingRenders.set(scope, (pendingRenders.get(scope) ?? 0) + 1)
+      return <span>{chips.length}</span>
+    }
+    const view = render(
+      <>
+        {scopes.map((scope) => (
+          <div key={scope}>
+            <TextConsumer scope={scope} />
+            <PendingConsumer scope={scope} />
+          </div>
+        ))}
+      </>
+    )
+    await act(async () => {})
+    textRenders.clear()
+    pendingRenders.clear()
+    act(() =>
+      updateNativeChatComposerDraft(
+        own,
+        { images: [{ id: 'saved', path: '/saved.png' }] },
+        'immediate'
+      )
+    )
+    expect(textRenders.size).toBe(0)
+    expect(pendingRenders.size).toBe(0)
+    expect(upstream[0].draft).toHaveBeenCalledTimes(1)
+    act(() => updateNativeChatComposerDraft(own, { text: 'own' }, 'immediate'))
+    expect(textRenders.get(own)).toBe(1)
+    expect(drafts.get(own)?.draft).toBe('own')
+    expect(pendingRenders.size).toBe(0)
+    act(() => addNativeChatPendingAttachment(own, { id: 'pending', path: '', pending: true }))
+    expect(textRenders.get(own)).toBe(1)
+    expect(pendingRenders.get(own)).toBe(1)
+    composing = true
+    act(() => appendToNativeChatComposerDraft(own, { text: 'returned' }))
+    expect(drafts.get(own)?.draft).toBe('own')
+    expect(upstream[0].append).toHaveBeenCalledTimes(1)
+    act(() => drafts.get(own)!.flushDraftAppends())
+    expect(drafts.get(own)?.draft).toBe('own\n\nreturned')
+    expect(textRenders.size).toBe(1)
+    expect(pendingRenders.size).toBe(1)
+    expect(upstream[0].draft).toHaveBeenCalledTimes(3)
+    expect(upstream[0].pending).toHaveBeenCalledTimes(1)
+    for (const idle of upstream.slice(1)) {
+      expect(idle.draft).not.toHaveBeenCalled()
+      expect(idle.pending).not.toHaveBeenCalled()
+      expect(idle.append).not.toHaveBeenCalled()
+    }
+    view.unmount()
+    releases.forEach((release) => release())
+    textRenders.clear()
+    pendingRenders.clear()
+    act(() => updateNativeChatComposerDraft(own, { text: 'after unmount' }, 'immediate'))
+    act(() => addNativeChatPendingAttachment(own, { id: 'after', path: '', pending: true }))
+    expect(textRenders.size + pendingRenders.size).toBe(0)
+    expect(upstream[0].draft).toHaveBeenCalledTimes(3)
+    expect(upstream[0].pending).toHaveBeenCalledTimes(1)
+  }
+)
 
 it.each([20, 200])(
   'completes moved and cancelled chips without inspecting %i unrelated scopes',

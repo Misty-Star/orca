@@ -31,6 +31,7 @@ function harness(
     dispatchCommand: (text: string) =>
       dispatchStructuredAgentSessionComposerCommand(text, {
         agent,
+        sessionCommands: structuredTransport.sessionCommands,
         snapshot: [],
         invokeAction: async () => true,
         setOption: async () => true,
@@ -68,6 +69,39 @@ function harness(
   )
   return { send: result.current, structuredTransport, setDraft }
 }
+
+it.each([10, 100])(
+  'ordinary Send skips %i reported commands for prose and still routes slash controls',
+  async (count) => {
+    clearNativeChatComposerDraftsForTests()
+    let kinds = 0
+    let names = 0
+    const onSubmitted = vi.fn()
+    const { send, structuredTransport } = harness('codex', undefined, onSubmitted)
+    structuredTransport.sessionCommands = Array.from({ length: count }, (_, index) => ({
+      get kind() {
+        kinds++
+        return 'command' as const
+      },
+      get name() {
+        names++
+        return `provider-${index}`
+      }
+    }))
+    await send('hello', [])
+    expect(structuredTransport.send).toHaveBeenCalledExactlyOnceWith('hello', [])
+    expect({ kinds, names }).toEqual({ kinds: 0, names: 0 })
+    expect(onSubmitted).toHaveBeenCalledOnce()
+    await send('/compact', [])
+    expect(onSubmitted).toHaveBeenCalledTimes(2)
+    expect(structuredTransport.send).toHaveBeenCalledTimes(1)
+    expect(structuredTransport.onError).toHaveBeenCalledTimes(2)
+    expect(structuredTransport.onError).toHaveBeenNthCalledWith(1, null, undefined)
+    expect(structuredTransport.onError).toHaveBeenNthCalledWith(2, null, undefined)
+    expect(kinds).toBeGreaterThanOrEqual(count)
+    expect(names).toBeGreaterThanOrEqual(count)
+  }
+)
 
 // Host-owned commands send no message and would drop images; pass-through commands carry their attachments.
 describe('attachment guard follows what the host claims', () => {

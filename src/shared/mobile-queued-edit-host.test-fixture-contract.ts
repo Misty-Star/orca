@@ -1,6 +1,6 @@
 import type { AgentJournalMessageItem } from './agent-session-journal-types'
 import type { AgentSessionExecutionOptions } from './agent-session-execution-options'
-import type { AgentSessionQueuedMessage } from './agent-session-wire'
+import type { AgentSessionQueuedMessage, AgentSessionSlashCommand } from './agent-session-wire'
 
 type StoredQueuedMessage = {
   messageId: string
@@ -23,4 +23,11 @@ export type MobileQueuedEditHostFixture = {
 export type MobileQueuedEditHostFixtureModule = {
   now: number
   createMobileQueuedEditHostFixture: () => Promise<MobileQueuedEditHostFixture>
+}
+
+export type AcpCommandOptionsFixtureModule = {
+  AcpStructuredOptions: new () => {
+    adoptCommands: (commands: readonly { name: string; description: string }[]) => void
+    readCommands: () => AgentSessionSlashCommand[] | undefined
+  }
 }

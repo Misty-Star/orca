@@ -9,7 +9,10 @@ import {
 } from './native-chat/composer/mobile-native-chat-draft-inputs'
 import { act } from 'react-test-renderer'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
-import type { MobileQueuedEditHostFixtureModule } from '../../../src/shared/mobile-queued-edit-host.test-fixture-contract'
+import type {
+  AcpCommandOptionsFixtureModule,
+  MobileQueuedEditHostFixtureModule
+} from '../../../src/shared/mobile-queued-edit-host.test-fixture-contract'
 import { mobileQueuedEditHarness, readOrHoldReply } from './mobile-queued-edit-hook.test-fixture'
 import { TextInput } from 'react-native'
 import { ActionSheetModal } from '../components/ActionSheetModal'
@@ -54,9 +57,9 @@ vi.mock('../components/bottom-drawer-modal-host-scope', () => ({
 const hostFixtures = await vi.importActual<MobileQueuedEditHostFixtureModule>(
   '../../../src/main/native-chat/agent-session-wire/mobile-queued-edit-host.test-fixture'
 )
-const { AcpStructuredOptions } = await vi.importActual<
-  typeof import('../../../src/main/acp/acp-structured-options')
->('../../../src/main/acp/acp-structured-options')
+const { AcpStructuredOptions } = await vi.importActual<AcpCommandOptionsFixtureModule>(
+  '../../../src/main/acp/acp-structured-options'
+)
 
 describe('real phone inline composer from More through picker pruning and host body', () => {
   const { state, Harness, mount, sendRequest, error, resolved } = mobileQueuedEditHarness()

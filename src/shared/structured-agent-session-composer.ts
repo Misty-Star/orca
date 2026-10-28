@@ -135,7 +135,11 @@ export function isStructuredAgentSessionComposerCommand(
   agent: AgentType = 'codex',
   reported?: readonly AgentSessionSlashCommand[]
 ): boolean {
-  return prepareStructuredAgentSessionComposerCommand(agent, reported)(text)
+  const command = commandParts(text)
+  return Boolean(
+    command &&
+    structuredRecognizedCommands(agent, reported).some((entry) => entry.name === command.name)
+  )
 }
 
 export function prepareStructuredAgentSessionComposerCommand(

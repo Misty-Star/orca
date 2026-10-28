@@ -1,5 +1,6 @@
 import type { NativeChatSkillDiscoverySnapshot } from '../../../src/shared/native-chat/input/native-chat-picker-items'
 import type { QueuedEditHostFixtureModule } from '../../../src/shared/queued-edit-host.test-fixture'
+import type { AcpCommandOptionsFixtureModule } from '../../../src/shared/mobile-queued-edit-host.test-fixture-contract'
 import { QueuedMessageUpdateParams } from '../../../src/shared/rpc-contract/structured-agent-session-queued-edit-params'
 import { mobileQueuedEditHarness, readOrHoldReply } from './mobile-queued-edit-hook.test-fixture'
 import { createElement, type ReactNode } from 'react'
@@ -55,9 +56,9 @@ vi.mock('../components/bottom-drawer-modal-host-scope', () => ({
 const { queuedEditHost } = await vi.importActual<QueuedEditHostFixtureModule>(
   '../../../src/main/native-chat/agent-session-journal/queued-edit-host.test-fixture'
 )
-const { AcpStructuredOptions } = await vi.importActual<
-  typeof import('../../../src/main/acp/acp-structured-options')
->('../../../src/main/acp/acp-structured-options')
+const { AcpStructuredOptions } = await vi.importActual<AcpCommandOptionsFixtureModule>(
+  '../../../src/main/acp/acp-structured-options'
+)
 
 describe('phone inline editor presentation', () => {
   const { state, Harness, mount, sendRequest, error, resolved, client } = mobileQueuedEditHarness()

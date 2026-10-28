@@ -135,8 +135,9 @@ describe('MobileNativeChatComposer on a structured chat', () => {
   it.each(['', 'See this'])(
     'sends an ordinary image with %j text through the real RPC and clears its visible chip',
     async (text) => {
-      const scope = `image-rpc-${text}`
+      const scope = mobileNativeChatScopeKey('host', 'worktree', `image-rpc-${text}`)!
       resetMobileNativeChatDraftInputsForTests()
+      setMobileNativeChatDraftText(scope, text)
       updateMobileNativeChatDraftInputs(scope, (input) => ({
         ...input,
         images: [{ id: 'photo', path: '/remote/photo.png', previewUri: 'file:///phone-photo.png' }]
@@ -173,6 +174,20 @@ describe('MobileNativeChatComposer on a structured chat', () => {
           composerScopeKey: scope,
           onSendError: vi.fn()
         })
+        const drafts = useMobileNativeChatDrafts({
+          hostId: 'host',
+          worktreeId: 'worktree',
+          tabId: `image-rpc-${text}`,
+          sessionId: SESSION_ID,
+          messages: [],
+          transcriptSettled: true
+        })
+        const bridge = useMobileStructuredNativeChatSendBridge({
+          ...drafts,
+          agent: 'codex',
+          sendStructured: session.sendWithOutcome,
+          onSendError: vi.fn()
+        })
         const image = useMobileNativeChatImageAttachments({
           client,
           agent: 'codex',
@@ -185,7 +200,7 @@ describe('MobileNativeChatComposer on a structured chat', () => {
           structuredNativeChat: true,
           showToast: vi.fn(),
           onSendError: vi.fn(),
-          baseSend: session.sendWithOutcome,
+          baseSend: bridge.sendWithOutcome,
           readSeededLaunchDraft: () => null
         })
         return draw({
