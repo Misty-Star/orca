@@ -1,17 +1,29 @@
 import {
   UI_LANGUAGE_CHINESE,
+  UI_LANGUAGE_CHINESE_TRADITIONAL,
   UI_LANGUAGE_ENGLISH,
   UI_LANGUAGE_FRENCH,
   UI_LANGUAGE_JAPANESE,
   UI_LANGUAGE_KOREAN,
   UI_LANGUAGE_PORTUGUESE,
+  UI_LANGUAGE_RUSSIAN,
   UI_LANGUAGE_SPANISH,
   UI_LANGUAGE_SYSTEM,
   isPluginUiLanguage,
   type UiLanguage
 } from './ui-language'
 
-export const SUPPORTED_UI_LOCALES = ['en', 'zh', 'ko', 'ja', 'es', 'fr', 'pt'] as const
+export const SUPPORTED_UI_LOCALES = [
+  'en',
+  'zh',
+  'zh-Hant',
+  'ko',
+  'ja',
+  'es',
+  'fr',
+  'pt',
+  'ru'
+] as const
 export type SupportedUiLocale = (typeof SUPPORTED_UI_LOCALES)[number]
 
 export const DEFAULT_UI_LOCALE: SupportedUiLocale = 'en'
@@ -50,9 +62,9 @@ function matchUiLocale(tag: string): SupportedUiLocale | null {
   const locale = new Intl.Locale(tag)
   if (locale.language === 'zh') {
     if (locale.script) {
-      return locale.script === 'Hans' ? 'zh' : null
+      return locale.script === 'Hans' ? 'zh' : locale.script === 'Hant' ? 'zh-Hant' : null
     }
-    return ['TW', 'HK', 'MO'].includes(locale.region ?? '') ? null : 'zh'
+    return ['TW', 'HK', 'MO'].includes(locale.region ?? '') ? 'zh-Hant' : 'zh'
   }
   return SUPPORTED_UI_LOCALES.find((supported) => supported === locale.language) ?? null
 }
@@ -115,6 +127,9 @@ export function resolveUiLocale(
   if (language === UI_LANGUAGE_CHINESE) {
     return 'zh'
   }
+  if (language === UI_LANGUAGE_CHINESE_TRADITIONAL) {
+    return 'zh-Hant'
+  }
   if (language === UI_LANGUAGE_KOREAN) {
     return 'ko'
   }
@@ -129,6 +144,9 @@ export function resolveUiLocale(
   }
   if (language === UI_LANGUAGE_PORTUGUESE) {
     return 'pt'
+  }
+  if (language === UI_LANGUAGE_RUSSIAN) {
+    return 'ru'
   }
   return normalizeSupportedUiLocale(systemLocale)
 }
