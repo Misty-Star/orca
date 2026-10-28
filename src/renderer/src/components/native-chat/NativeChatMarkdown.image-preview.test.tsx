@@ -724,7 +724,7 @@ describe('native chat Markdown image preview', () => {
   })
 
   it.each(['inline', 'reference'])(
-    'loads %s sandbox images and links on the chat host with literal paths and line locations (#30774)',
+    'loads %s file: images and links on the chat host with literal paths and line locations (#30774)',
     async (syntax) => {
       useAppStore.setState({
         settings: { ...getDefaultSettings('/tmp'), terminalLinkClickBehavior: 'open' }
@@ -746,19 +746,19 @@ describe('native chat Markdown image preview', () => {
           content={
             syntax === 'inline'
               ? [
-                  '![Chart](sandbox:/mnt/data/report.png%3A7)',
-                  '[**![Thumb](sandbox:/mnt/data/thumb.png)**](https://example.com/full)',
-                  '[Image source](sandbox:/mnt/data/report.png%3A7)',
-                  '[Download PDF](sandbox:/mnt/data/report.pdf#L9)'
+                  '![Chart](file:///srv/out/report.png%3A7)',
+                  '[**![Thumb](file:///srv/out/thumb.png)**](https://example.com/full)',
+                  '[Image source](file:///srv/out/report.png%3A7)',
+                  '[Download PDF](file:///srv/out/report.pdf#L9)'
                 ].join('\n\n')
               : [
                   '![Chart][chart]',
                   '[**![Thumb][thumb]**](https://example.com/full)',
                   '[Image source][chart]',
                   '[Download PDF][report]',
-                  '[chart]: sandbox:/mnt/data/report.png%3A7',
-                  '[thumb]: sandbox:/mnt/data/thumb.png',
-                  '[report]: sandbox:/mnt/data/report.pdf#L9'
+                  '[chart]: file:///srv/out/report.png%3A7',
+                  '[thumb]: file:///srv/out/thumb.png',
+                  '[report]: file:///srv/out/report.pdf#L9'
                 ].join('\n\n')
           }
         />
@@ -775,7 +775,7 @@ describe('native chat Markdown image preview', () => {
           name: 'Chart'
         })
       ).toHaveAttribute('src', expect.stringMatching(/^blob:/))
-      for (const path of ['/mnt/data/report.png:7', '/mnt/data/thumb.png']) {
+      for (const path of ['/srv/out/report.png:7', '/srv/out/thumb.png']) {
         expect(mocks.readRuntimeFilePreview).toHaveBeenCalledWith(
           expect.objectContaining({
             target: { kind: 'environment', environmentId: 'remote-a' }
@@ -787,14 +787,14 @@ describe('native chat Markdown image preview', () => {
       fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Close' }))
       fireEvent.click(screen.getByRole('link', { name: 'Image source' }))
       expect(mocks.openDetectedFilePath).toHaveBeenCalledWith(
-        '/mnt/data/report.png',
+        '/srv/out/report.png',
         7,
         null,
         expect.objectContaining({ runtimeEnvironmentId: 'remote-a', sourceTabId: 'tab-1' })
       )
       fireEvent.click(screen.getByRole('link', { name: 'Download PDF' }))
       expect(mocks.openDetectedFilePath).toHaveBeenCalledWith(
-        '/mnt/data/report.pdf',
+        '/srv/out/report.pdf',
         9,
         null,
         expect.objectContaining({
@@ -819,11 +819,11 @@ describe('native chat Markdown image preview', () => {
     )
     expect(screen.queryByRole('img')).toBeNull()
     expect(screen.getByRole('link', { name: 'Chart' })).toBeInTheDocument()
-    rerender(<Transcript variant="compact" content="![Chart](sandbox:/mnt/data/chart.png)" />)
+    rerender(<Transcript variant="compact" content="![Chart](file:///srv/out/chart.png)" />)
     expect(screen.queryByRole('img')).toBeNull()
     expect(screen.getByRole('link', { name: 'Chart' })).toHaveAttribute(
       'href',
-      '#orca-native-chat-file-path=%2Fmnt%2Fdata%2Fchart.png'
+      '#orca-native-chat-file-path=%2Fsrv%2Fout%2Fchart.png'
     )
     rerender(
       <Transcript content="![Attachment](https://github.com/user-attachments/assets/secret)" />

@@ -48,7 +48,7 @@ type NativeChatMarkdownProps = Omit<ComponentProps<typeof CommentMarkdown>, 'fil
   rowKey?: string
 }
 
-/** Every chat surface rewrites `sandbox:`/`file:` destinations before sanitize can drop them. */
+/** Every chat surface rewrites `file:` destinations before sanitize can drop them. */
 function withFileDestinations(
   visualExtension: CommentMarkdownExtension | undefined
 ): CommentMarkdownExtension {

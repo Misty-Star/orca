@@ -15,8 +15,8 @@ type MarkdownNode = {
 const SCHEME_PREFIX_PATTERN = /^[A-Za-z][A-Za-z0-9+.-]*:/
 
 /**
- * Sanitize keeps only the protocols it knows, so a `sandbox:` link or a `sandbox:`/`file:` image
- * naming a file loses its address before any chat code sees it. Rewrite those destinations to the
+ * Sanitize keeps only the protocols it knows, so a `file:` link or image naming a file loses its
+ * address before any chat code sees it. Rewrite those destinations to the
  * chat's own file hrefs first; the existing file link and image paths then open them on the
  * chat's host. Web links and plain paths are left as written.
  */
